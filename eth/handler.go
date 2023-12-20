@@ -88,6 +88,9 @@ type txPool interface {
 	// The slice should be modifiable by the caller.
 	Pending(enforceTips bool) map[common.Address][]*txpool.LazyTransaction
 
+	// PendingBundles should return pending bundles.
+	PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle
+
 	// SubscribeNewTxsEvent should return an event subscription of
 	// NewTxsEvent and send events to the given channel.
 	SubscribeNewTxsEvent(chan<- core.NewTxsEvent) event.Subscription

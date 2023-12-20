@@ -91,6 +91,9 @@ type Engine interface {
 	// rules of a given engine.
 	VerifyUncles(chain ChainReader, block *types.Block) error
 
+	// NextInTurnValidator return the next in-turn validator for header
+	NextInTurnValidator(chain ChainHeaderReader, header *types.Header) (common.Address, error)
+
 	// Prepare initializes the consensus fields of a block header according to the
 	// rules of a particular engine. The changes are executed inline.
 	Prepare(chain ChainHeaderReader, header *types.Header) error
@@ -120,6 +123,9 @@ type Engine interface {
 
 	// SealHash returns the hash of a block prior to it being sealed.
 	SealHash(header *types.Header) common.Hash
+
+	// SealData signs keccak256(data)
+	SealData(data []byte) ([]byte, error)
 
 	// CalcDifficulty is the difficulty adjustment algorithm. It returns the difficulty
 	// that a new block should have.

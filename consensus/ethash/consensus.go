@@ -475,6 +475,11 @@ var FrontierDifficultyCalculator = calcDifficultyFrontier
 var HomesteadDifficultyCalculator = calcDifficultyHomestead
 var DynamicDifficultyCalculator = makeDifficultyCalculator
 
+// NextInTurnValidator return the next in-turn validator for header
+func (ethash *Ethash) NextInTurnValidator(chain consensus.ChainHeaderReader, header *types.Header) (common.Address, error) {
+	return common.Address{}, errors.New("not implemented")
+}
+
 // Prepare implements consensus.Engine, initializing the difficulty field of a
 // header to conform to the ethash protocol. The changes are done inline.
 func (ethash *Ethash) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
@@ -543,6 +548,11 @@ func (ethash *Ethash) SealHash(header *types.Header) (hash common.Hash) {
 	rlp.Encode(hasher, enc)
 	hasher.Sum(hash[:0])
 	return hash
+}
+
+// SealData signs keccak256(data)
+func (ethash *Ethash) SealData(data []byte) ([]byte, error) {
+	return nil, errors.New("not implemented")
 }
 
 // Some weird constants to avoid constant memory allocs for them.

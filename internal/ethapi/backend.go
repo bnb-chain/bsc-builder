@@ -77,6 +77,7 @@ type Backend interface {
 
 	// Transaction pool API
 	SendTx(ctx context.Context, signedTx *types.Transaction) error
+	SendBundle(ctx context.Context, bundle *types.Bundle) error
 	GetTransaction(ctx context.Context, txHash common.Hash) (*types.Transaction, common.Hash, uint64, uint64, error)
 	GetPoolTransactions() (types.Transactions, error)
 	GetPoolTransaction(txHash common.Hash) *types.Transaction
@@ -127,6 +128,12 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 		}, {
 			Namespace: "personal",
 			Service:   NewPersonalAccountAPI(apiBackend, nonceLock),
+		}, {
+			Namespace: "eth",
+			Service:   NewPrivateTxBundleAPI(apiBackend),
+		}, {
+			Namespace: "mev",
+			Service:   NewIssueAPI(apiBackend),
 		},
 	}
 }

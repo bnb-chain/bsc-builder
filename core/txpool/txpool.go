@@ -304,6 +304,20 @@ func (p *TxPool) Add(txs []*Transaction, local bool, sync bool) []error {
 	return errs
 }
 
+// AddBundle enqueues a bundle into the pool if it is valid.
+func (p *TxPool) AddBundle(bundle *types.Bundle) error {
+	// TODO(renee) simulate first, if success, then add to pool (refer to bsc-private)
+
+	// Try to find a subpool that accepts the
+	for _, subpool := range p.subpools {
+		if subpool.FilterBundle() {
+			return subpool.AddBundle(bundle)
+		}
+	}
+
+	return errors.New("no subpool accepts the bundle")
+}
+
 // Pending retrieves all currently processable transactions, grouped by origin
 // account and sorted by nonce.
 func (p *TxPool) Pending(enforceTips bool) map[common.Address][]*LazyTransaction {
@@ -314,6 +328,15 @@ func (p *TxPool) Pending(enforceTips bool) map[common.Address][]*LazyTransaction
 		}
 	}
 	return txs
+}
+
+// PendingBundles retrieves all currently processable bundles.
+func (p *TxPool) PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle {
+	bundles := make([]*types.Bundle, 0)
+	for _, subpool := range p.subpools {
+		bundles = append(bundles, subpool.PendingBundles(blockNumber, blockTimestamp)...)
+	}
+	return bundles
 }
 
 // SubscribeNewTxsEvent registers a subscription of NewTxsEvent and starts sending

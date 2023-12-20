@@ -56,6 +56,8 @@ type Config struct {
 
 	NewPayloadTimeout      time.Duration // The maximum time allowance for creating a new payload
 	DisableVoteAttestation bool          // Whether to skip assembling vote attestation
+
+	Bidder BidderConfig // Bidder configuration
 }
 
 // DefaultConfig contains default settings for miner.
