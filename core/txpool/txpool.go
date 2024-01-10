@@ -40,14 +40,12 @@ const (
 	TxStatusIncluded
 )
 
-var (
-	// reservationsGaugeName is the prefix of a per-subpool address reservation
-	// metric.
-	//
-	// This is mostly a sanity metric to ensure there's no bug that would make
-	// some subpool hog all the reservations due to mis-accounting.
-	reservationsGaugeName = "txpool/reservations"
-)
+// reservationsGaugeName is the prefix of a per-subpool address reservation
+// metric.
+//
+// This is mostly a sanity metric to ensure there's no bug that would make
+// some subpool hog all the reservations due to mis-accounting.
+var reservationsGaugeName = "txpool/reservations"
 
 // BlockChain defines the minimal set of methods needed to back a tx pool with
 // a chain. Exists to allow mocking the live chain out of tests.
@@ -57,6 +55,11 @@ type BlockChain interface {
 
 	// SubscribeChainHeadEvent subscribes to new blocks being added to the chain.
 	SubscribeChainHeadEvent(ch chan<- core.ChainHeadEvent) event.Subscription
+}
+
+type MevGasPricer interface {
+	MinimalBundleGasPrice() *big.Int
+	LatestBundleGasPrice() *big.Int
 }
 
 // TxPool is an aggregator for various transaction specific pools, collectively
@@ -70,7 +73,7 @@ type TxPool struct {
 	reservations map[common.Address]SubPool // Map with the account to pool reservations
 	reserveLock  sync.Mutex                 // Lock protecting the account reservations
 
-	subs event.SubscriptionScope // Subscription scope to unscubscribe all on shutdown
+	subs event.SubscriptionScope // Subscription scope to unsubscribe all on shutdown
 	quit chan chan error         // Quit channel to tear down the head updater
 }
 
@@ -306,16 +309,31 @@ func (p *TxPool) Add(txs []*Transaction, local bool, sync bool) []error {
 
 // AddBundle enqueues a bundle into the pool if it is valid.
 func (p *TxPool) AddBundle(bundle *types.Bundle) error {
-	// TODO(renee) simulate first, if success, then add to pool (refer to bsc-private)
-
-	// Try to find a subpool that accepts the
+	// Try to find a sub pool that accepts the bundle
 	for _, subpool := range p.subpools {
-		if subpool.FilterBundle() {
+		if subpool.FilterBundle(bundle) {
 			return subpool.AddBundle(bundle)
 		}
 	}
-
 	return errors.New("no subpool accepts the bundle")
+}
+
+func (p *TxPool) MinimalBundleGasPrice() *big.Int {
+	for _, subpool := range p.subpools {
+		if gasPricer, ok := subpool.(MevGasPricer); ok {
+			return gasPricer.MinimalBundleGasPrice()
+		}
+	}
+	return common.Big0
+}
+
+func (p *TxPool) LatestBundleGasPrice() *big.Int {
+	for _, subpool := range p.subpools {
+		if gasPricer, ok := subpool.(MevGasPricer); ok {
+			return gasPricer.LatestBundleGasPrice()
+		}
+	}
+	return common.Big0
 }
 
 // Pending retrieves all currently processable transactions, grouped by origin
@@ -335,6 +353,15 @@ func (p *TxPool) PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*
 	bundles := make([]*types.Bundle, 0)
 	for _, subpool := range p.subpools {
 		bundles = append(bundles, subpool.PendingBundles(blockNumber, blockTimestamp)...)
+	}
+	return bundles
+}
+
+// AllBundles returns all the bundles currently in the pool
+func (p *TxPool) AllBundles() []*types.Bundle {
+	bundles := make([]*types.Bundle, 0)
+	for _, subpool := range p.subpools {
+		bundles = append(bundles, subpool.AllBundles()...)
 	}
 	return bundles
 }

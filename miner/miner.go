@@ -54,6 +54,9 @@ type Config struct {
 	Recommit      time.Duration  // The time interval for miner to re-create mining work.
 	VoteEnable    bool           // Whether to vote when mining
 
+	MaxSimulateBundles int   `toml:",omitempty"`
+	MevGasPriceFloor   int64 `toml:",omitempty"`
+
 	NewPayloadTimeout      time.Duration // The maximum time allowance for creating a new payload
 	DisableVoteAttestation bool          // Whether to skip assembling vote attestation
 
