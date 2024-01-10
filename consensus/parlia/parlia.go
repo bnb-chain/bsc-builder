@@ -929,6 +929,16 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	return nil
 }
 
+// NextInTurnValidator return the next in-turn validator for header
+func (p *Parlia) NextInTurnValidator(chain consensus.ChainHeaderReader, header *types.Header) (common.Address, error) {
+	snap, err := p.snapshot(chain, header.Number.Uint64(), header.Hash(), nil)
+	if err != nil {
+		return common.Address{}, err
+	}
+
+	return snap.inturnValidator(), nil
+}
+
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
@@ -942,6 +952,7 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	}
 
 	// Set the correct difficulty
+	// TODO(renee) p.val -> header.coinbase ?
 	header.Difficulty = CalcDifficulty(snap, p.val)
 
 	// Ensure the extra data has all it's components
@@ -1423,6 +1434,22 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	}()
 
 	return nil
+}
+
+// SealData signs keccak256(data)
+func (p *Parlia) SealData(data []byte) ([]byte, error) {
+	// Don't hold the val fields for the entire sealing procedure
+	p.lock.RLock()
+	val, signFn := p.val, p.signFn
+	p.lock.RUnlock()
+
+	sig, err := signFn(accounts.Account{Address: val}, accounts.MimetypeTextPlain, data)
+	if err != nil {
+		log.Error("Sign for the block header failed when sealing", "err", err)
+		return nil, err
+	}
+
+	return sig, nil
 }
 
 func (p *Parlia) shouldWaitForCurrentBlockProcess(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot) bool {

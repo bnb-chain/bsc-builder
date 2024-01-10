@@ -27,7 +27,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
-	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/systemcontracts"
@@ -86,6 +85,9 @@ type environment struct {
 	header   *types.Header
 	txs      []*types.Transaction
 	receipts []*types.Receipt
+
+	blockReward  *big.Int
+	bundleProfit *big.Int
 }
 
 // copy creates a deep copy of environment.
@@ -219,6 +221,8 @@ type worker struct {
 	fullTaskHook      func()                             // Method to call before pushing the full sealing task.
 	resubmitHook      func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 	recentMinedBlocks *lru.Cache
+
+	bidder *bidder
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
@@ -244,6 +248,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		exitCh:             make(chan struct{}),
 		resubmitIntervalCh: make(chan time.Duration),
 		recentMinedBlocks:  recentMinedBlocks,
+		bidder:             NewBidder(&config.Bidder, engine, eth.BlockChain()),
 	}
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
@@ -267,11 +272,15 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	}
 	worker.newpayloadTimeout = newpayloadTimeout
 
-	worker.wg.Add(4)
+	worker.wg.Add(2)
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
-	go worker.resultLoop()
-	go worker.taskLoop()
+	// if not builder
+	{
+		worker.wg.Add(2)
+		go worker.resultLoop()
+		go worker.taskLoop()
+	}
 
 	// Submit first work to initialize pending state.
 	if init {
@@ -418,17 +427,6 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			}
 			clearPending(head.Block.NumberU64())
 			timestamp = time.Now().Unix()
-			if p, ok := w.engine.(*parlia.Parlia); ok {
-				signedRecent, err := p.SignRecently(w.chain, head.Block)
-				if err != nil {
-					log.Debug("Not allowed to propose block", "err", err)
-					continue
-				}
-				if signedRecent {
-					log.Info("Signed recently, must wait")
-					continue
-				}
-			}
 			commit(commitInterruptNewHead)
 
 		case <-timer.C:
@@ -991,11 +989,24 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 	// Set the coinbase if the worker is running or it's required
 	var coinbase common.Address
 	if w.isRunning() {
-		coinbase = w.etherbase()
+		var err error
+
+		// take the next in-turn validator as coinbase
+		coinbase, err = w.engine.NextInTurnValidator(w.chain, w.chain.CurrentBlock())
+		if err != nil {
+			log.Error("Failed to get next in-turn validator", "err", err)
+			return
+		}
 		if coinbase == (common.Address{}) {
 			log.Error("Refusing to mine without etherbase")
 			return
 		}
+	}
+
+	// do not build work if not register to the coinbase
+	if !w.bidder.registered(coinbase) {
+		log.Warn("Refusing to mine with unregistered validator")
+		return
 	}
 
 	stopTimer := time.NewTimer(0)
@@ -1060,7 +1071,7 @@ LOOP:
 
 		// Fill pending transactions from the txpool into the block.
 		fillStart := time.Now()
-		err = w.fillTransactions(interruptCh, work, stopTimer)
+		err = w.fillTransactionsAndBundles(interruptCh, work, stopTimer)
 		fillDuration := time.Since(fillStart)
 		switch {
 		case errors.Is(err, errBlockInterruptedByNewHead):
@@ -1076,6 +1087,9 @@ LOOP:
 			log.Debug("commitWork finish", "reason", err)
 			break LOOP
 		}
+
+		// TODO(renee) handle stop bidding
+		go w.bidder.Bid(work)
 
 		if interruptCh == nil || stopTimer == nil {
 			// it is single commit work, no need to try several time.

@@ -450,6 +450,11 @@ func (pool *TxPool) Add(ctx context.Context, tx *types.Transaction) error {
 	return nil
 }
 
+// AddBundle enqueues a bundle into the pool if it is valid.
+func (pool *TxPool) AddBundle(bundle *types.Bundle) error {
+	return nil
+}
+
 // AddBatch adds all valid transactions to the pool and passes them to
 // the tx relay backend
 func (pool *TxPool) AddBatch(ctx context.Context, txs []*types.Transaction) {

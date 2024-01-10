@@ -498,6 +498,11 @@ func (c *Clique) verifySeal(snap *Snapshot, header *types.Header, parents []*typ
 	return nil
 }
 
+// NextInTurnValidator return the next in-turn validator for header
+func (c *Clique) NextInTurnValidator(chain consensus.ChainHeaderReader, header *types.Header) (common.Address, error) {
+	return common.Address{}, errors.New("not implemented")
+}
+
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (c *Clique) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
@@ -699,6 +704,11 @@ func calcDifficulty(snap *Snapshot, signer common.Address) *big.Int {
 // SealHash returns the hash of a block prior to it being sealed.
 func (c *Clique) SealHash(header *types.Header) common.Hash {
 	return SealHash(header)
+}
+
+// SealData signs keccak256(data)
+func (c *Clique) SealData(data []byte) ([]byte, error) {
+	return nil, errors.New("not implemented")
 }
 
 // Close implements consensus.Engine. It's a noop for clique as there are no background threads.
