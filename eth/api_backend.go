@@ -309,14 +309,17 @@ func (b *EthAPIBackend) BundlePrice() *big.Int {
 	if len(bundles) < b.eth.config.Miner.MaxSimulateBundles/2 {
 		return big.NewInt(b.eth.config.Miner.MevGasPriceFloor)
 	}
+
 	sort.SliceStable(bundles, func(i, j int) bool {
 		return bundles[j].Price.Cmp(bundles[i].Price) < 0
 	})
+
 	gasFloor := big.NewInt(b.eth.config.Miner.MevGasPriceFloor)
 	idx := len(bundles) / 2
 	if bundles[idx].Price.Cmp(gasFloor) < 0 {
 		return gasFloor
 	}
+
 	return bundles[idx].Price
 }
 

@@ -53,8 +53,8 @@ type Config struct {
 	PriceLimit uint64 // Minimum gas price to enforce for acceptance into the pool
 	PriceBump  uint64 // Minimum price bump percentage to replace an already existing transaction (nonce)
 
-	GlobalQueue     uint64 // Maximum number of non-executable bundle slots for all accounts
 	BundleSlot      uint64 // Maximum number of bundle slots for all accounts
+	GlobalQueue     uint64 // Maximum number of non-executable bundle slots for all accounts
 	MaxBundleBlocks uint64 // Maximum number of blocks for calculating MinimalBundleGasPrice
 
 	BundleGasPricePercentile      uint8         // Percentile of the recent minimal mev gas price
