@@ -56,17 +56,9 @@ const (
 	txReannoMaxNum = 1024
 )
 
-var (
-	// ErrAlreadyKnown is returned if the transactions is already contained
-	// within the pool.
-	ErrAlreadyKnown = errors.New("already known")
-
-	// ErrTxPoolOverflow is returned if the transaction pool is full and can't accept
-	// another remote transaction.
-	ErrTxPoolOverflow = errors.New("txpool is full")
-
-	ErrInBlackList = errors.New("sender or to in black list")
-)
+// ErrTxPoolOverflow is returned if the transaction pool is full and can't accept
+// another remote transaction.
+var ErrTxPoolOverflow = errors.New("txpool is full")
 
 var (
 	evictionInterval    = time.Minute     // Time interval to check for evictable transactions
@@ -631,7 +623,7 @@ func (pool *LegacyPool) validateTxBasics(tx *types.Transaction, local bool) erro
 	for _, blackAddr := range types.NanoBlackList {
 		if sender == blackAddr || (tx.To() != nil && *tx.To() == blackAddr) {
 			log.Error("blacklist account detected", "account", blackAddr, "tx", tx.Hash())
-			return ErrInBlackList
+			return txpool.ErrInBlackList
 		}
 	}
 
@@ -663,7 +655,7 @@ func (pool *LegacyPool) validateTx(tx *types.Transaction, local bool) error {
 	for _, blackAddr := range types.NanoBlackList {
 		if sender == blackAddr || (tx.To() != nil && *tx.To() == blackAddr) {
 			log.Error("blacklist account detected", "account", blackAddr, "tx", tx.Hash())
-			return ErrInBlackList
+			return txpool.ErrInBlackList
 		}
 	}
 
@@ -715,7 +707,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 	if pool.all.Get(hash) != nil {
 		log.Trace("Discarding already known transaction", "hash", hash)
 		knownTxMeter.Mark(1)
-		return false, ErrAlreadyKnown
+		return false, txpool.ErrAlreadyKnown
 	}
 	// Make the local flag. If it's from local source or it's from the network but
 	// the sender is marked as local previously, treat it as the local transaction.
@@ -1038,7 +1030,7 @@ func (pool *LegacyPool) addTxs(txs []*types.Transaction, local, sync bool) []err
 	for i, tx := range txs {
 		// If the transaction is known, pre-set the error slot
 		if pool.all.Get(tx.Hash()) != nil {
-			errs[i] = ErrAlreadyKnown
+			errs[i] = txpool.ErrAlreadyKnown
 			knownTxMeter.Mark(1)
 			continue
 		}
@@ -1062,7 +1054,7 @@ func (pool *LegacyPool) addTxs(txs []*types.Transaction, local, sync bool) []err
 	newErrs, dirtyAddrs := pool.addTxsLocked(news, local)
 	pool.mu.Unlock()
 
-	var nilSlot = 0
+	nilSlot := 0
 	for _, err := range newErrs {
 		for errs[nilSlot] != nil {
 			nilSlot++
@@ -1752,7 +1744,7 @@ func (pool *LegacyPool) demoteUnexecutables() {
 	}
 }
 
-func (pool *LegacyPool) FilterBundle() bool {
+func (pool *LegacyPool) FilterBundle(bundle *types.Bundle) bool {
 	return false
 }
 
@@ -1761,6 +1753,10 @@ func (pool *LegacyPool) AddBundle(bundle *types.Bundle) error {
 }
 
 func (pool *LegacyPool) PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle {
+	return []*types.Bundle{}
+}
+
+func (pool *LegacyPool) AllBundles() []*types.Bundle {
 	return []*types.Bundle{}
 }
 

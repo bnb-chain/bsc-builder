@@ -84,6 +84,9 @@ type txPool interface {
 	// Add should add the given transactions to the pool.
 	Add(txs []*txpool.Transaction, local bool, sync bool) []error
 
+	// AddBundle should add the given bundle to the pool.
+	AddBundle(bundle *types.Bundle) error
+
 	// Pending should return pending transactions.
 	// The slice should be modifiable by the caller.
 	Pending(enforceTips bool) map[common.Address][]*txpool.LazyTransaction
@@ -998,7 +1001,7 @@ func (h *handler) enableSyncedFeatures() {
 	h.acceptTxs.Store(true)
 	// In the bsc scenario, pathdb.MaxDirtyBufferSize (256MB) will be used.
 	// The performance is better than DefaultDirtyBufferSize (64MB).
-	//if h.chain.TrieDB().Scheme() == rawdb.PathScheme {
+	// if h.chain.TrieDB().Scheme() == rawdb.PathScheme {
 	//	h.chain.TrieDB().SetBufferSize(pathdb.DefaultDirtyBufferSize)
-	//}
+	// }
 }

@@ -69,7 +69,7 @@ type AddressReserver func(addr common.Address, reserve bool) error
 // production, this interface defines the common methods that allow the primary
 // transaction pool to manage the subpools.
 type SubPool interface {
-	// Filter is a selector used to decide whether a transaction whould be added
+	// Filter is a selector used to decide whether a transaction would be added
 	// to this particular subpool.
 	Filter(tx *types.Transaction) bool
 
@@ -142,11 +142,14 @@ type SubPool interface {
 
 	// FilterBundle is a selector used to decide whether a bundle would be added
 	// to this particular subpool.
-	FilterBundle() bool
+	FilterBundle(bundle *types.Bundle) bool
 
 	// AddBundle enqueues a bundle into the pool if it is valid.
 	AddBundle(bundle *types.Bundle) error
 
 	// PendingBundles retrieves all currently processable bundles.
 	PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle
+
+	// AllBundles returns all the bundles currently in the pool.
+	AllBundles() []*types.Bundle
 }

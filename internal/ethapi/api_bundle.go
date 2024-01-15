@@ -48,9 +48,8 @@ type BundlePrice struct {
 	MinimalGasPrice *big.Int `json:"minimalGasPrice"`
 }
 
-// BundlePrice TODO(renee): implement (refer to bsc-private)
 func (s *PrivateTxBundleAPI) BundlePrice(ctx context.Context) (*BundlePrice, error) {
-	return nil, nil
+	return &BundlePrice{BundlePrice: s.b.BundlePrice(), MinimalGasPrice: s.b.MinimalBundleGasPrice()}, nil
 }
 
 // SendBundle will add the signed transaction to the transaction pool.
