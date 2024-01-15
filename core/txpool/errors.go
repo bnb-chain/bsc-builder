@@ -19,7 +19,7 @@ package txpool
 import "errors"
 
 var (
-	// ErrAlreadyKnown is returned if the transactions is already contained
+	// ErrAlreadyKnown is returned if the transaction is already contained
 	// within the pool.
 	ErrAlreadyKnown = errors.New("already known")
 
@@ -57,4 +57,25 @@ var (
 
 	// ErrInBlackList is returned if the sender or to is in black list.
 	ErrInBlackList = errors.New("sender or to in black list")
+
+	// ErrTxPoolOverflow is returned if the transaction pool is full and can't accept
+	// another remote transaction.
+	ErrTxPoolOverflow = errors.New("txpool is full")
+
+	// ErrNoActiveJournal is returned if a transaction is attempted to be inserted
+	// into the journal, but no such file is currently open.
+	ErrNoActiveJournal = errors.New("no active journal")
+
+	// ErrSimulatorMissing is returned if the bundle simulator is missing.
+	ErrSimulatorMissing = errors.New("bundle simulator is missing")
+
+	// ErrBundleGasPriceLow is returned if the bundle gas price is too low.
+	ErrBundleGasPriceLow = errors.New("bundle gas price is too low")
+
+	// ErrBundleAlreadyExist is returned if the bundle is already contained
+	// within the pool.
+	ErrBundleAlreadyExist = errors.New("bundle already exist")
+
+	// ErrBundlePoolOverflow is returned if the bundle pool is full
+	ErrBundlePoolOverflow = errors.New("bundle pool is full")
 )

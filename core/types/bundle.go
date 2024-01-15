@@ -4,6 +4,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
 type Bundle struct {
@@ -25,4 +26,11 @@ type SimulatedBundle struct {
 	EthSentToCoinbase *big.Int
 	TotalGasUsed      uint64
 	OriginalBundle    *Bundle
+}
+
+func (bundle *Bundle) Size() uint64 {
+	c := writeCounter(0)
+	rlp.Encode(&c, &bundle)
+	size := uint64(c)
+	return size
 }

@@ -18,7 +18,6 @@
 package legacypool
 
 import (
-	"errors"
 	"math"
 	"math/big"
 	"sort"
@@ -55,10 +54,6 @@ const (
 	// txReannoMaxNum is the maximum number of transactions a reannounce action can include.
 	txReannoMaxNum = 1024
 )
-
-// ErrTxPoolOverflow is returned if the transaction pool is full and can't accept
-// another remote transaction.
-var ErrTxPoolOverflow = errors.New("txpool is full")
 
 var (
 	evictionInterval    = time.Minute     // Time interval to check for evictable transactions
@@ -440,7 +435,7 @@ func (pool *LegacyPool) Close() error {
 }
 
 // Reset implements txpool.SubPool, allowing the legacy pool's internal state to be
-// kept in sync with the main transacion pool's internal state.
+// kept in sync with the main transaction pool's internal state.
 func (pool *LegacyPool) Reset(oldHead, newHead *types.Header) {
 	wait := pool.requestReset(oldHead, newHead)
 	<-wait
@@ -759,7 +754,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		// replacements to 25% of the slots
 		if pool.changesSinceReorg > int(pool.config.GlobalSlots/4) {
 			throttleTxMeter.Mark(1)
-			return false, ErrTxPoolOverflow
+			return false, txpool.ErrTxPoolOverflow
 		}
 
 		// New transaction is better than our worse ones, make room for it.
@@ -771,7 +766,7 @@ func (pool *LegacyPool) add(tx *types.Transaction, local bool) (replaced bool, e
 		if !isLocal && !success {
 			log.Trace("Discarding overflown transaction", "hash", hash)
 			overflowedTxMeter.Mark(1)
-			return false, ErrTxPoolOverflow
+			return false, txpool.ErrTxPoolOverflow
 		}
 
 		// If the new transaction is a future transaction it should never churn pending transactions
