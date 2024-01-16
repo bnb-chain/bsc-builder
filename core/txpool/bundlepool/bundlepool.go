@@ -6,8 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/holiman/uint256"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/prque"
 	"github.com/ethereum/go-ethereum/core"
@@ -15,8 +13,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
+	"sync/atomic"
 )
 
 const (
@@ -55,7 +55,7 @@ type BundleSimulator interface {
 
 type BundlePool struct {
 	config Config
-	gasTip *uint256.Int // Currently accepted minimum gas tip
+	gasTip atomic.Pointer[big.Int] // Currently accepted minimum gas tip
 
 	bundles map[common.Hash]*types.Bundle
 	mu      sync.RWMutex
@@ -65,7 +65,8 @@ type BundlePool struct {
 	bundleGasPricer *BundleGasPricer
 	simulator       BundleSimulator
 
-	wg sync.WaitGroup
+	wg         sync.WaitGroup
+	shutdownCh chan struct{}
 }
 
 func New(config Config, chain BlockChain) *BundlePool {
@@ -76,6 +77,7 @@ func New(config Config, chain BlockChain) *BundlePool {
 		config:          config,
 		bundles:         make(map[common.Hash]*types.Bundle),
 		bundleGasPricer: NewBundleGasPricer(config.BundleGasPricerExpireTime),
+		shutdownCh:      make(chan struct{}),
 	}
 
 	return pool
@@ -110,6 +112,13 @@ func (p *BundlePool) Init(gasTip *big.Int, head *types.Header, reserve txpool.Ad
 // eviction events.
 func (p *BundlePool) loop() {
 	defer p.wg.Done()
+
+	for {
+		select {
+		case <-p.shutdownCh:
+			return
+		}
+	}
 }
 
 func (p *BundlePool) FilterBundle(bundle *types.Bundle) bool {
@@ -208,8 +217,11 @@ func (p *BundlePool) Filter(tx *types.Transaction) bool {
 }
 
 func (p *BundlePool) Close() error {
-	// TODO implement me
-	panic("implement me")
+	close(p.shutdownCh)
+	p.wg.Wait()
+
+	log.Info("Bundle pool stopped")
+	return nil
 }
 
 func (p *BundlePool) Reset(oldHead, newHead *types.Header) {
@@ -220,8 +232,16 @@ func (p *BundlePool) Reset(oldHead, newHead *types.Header) {
 // SetGasTip updates the minimum price required by the subpool for a new
 // transaction, and drops all transactions below this threshold.
 func (p *BundlePool) SetGasTip(tip *big.Int) {
-	// TODO implement me
-	panic("implement me")
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	old := p.gasTip.Load()
+	p.gasTip.Store(new(big.Int).Set(tip))
+
+	if tip.Cmp(old) > 0 {
+		// TODO
+	}
+	log.Info("Bundle pool tip threshold updated", "tip", tip)
 }
 
 // Has returns an indicator whether subpool has a transaction cached with the
