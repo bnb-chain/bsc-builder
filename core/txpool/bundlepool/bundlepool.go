@@ -15,7 +15,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -61,14 +60,12 @@ type BundlePool struct {
 	bundles map[common.Hash]*types.Bundle
 	mu      sync.RWMutex
 
-	journal *journal // Journal of local transaction to back up to disk
-	slots   uint64   // Number of slots currently allocated
+	slots uint64 // Number of slots currently allocated
 
 	bundleGasPricer *BundleGasPricer
 	simulator       BundleSimulator
 
-	journalBundleCh chan *types.Bundle
-	wg              sync.WaitGroup
+	wg sync.WaitGroup
 }
 
 func New(config Config, chain BlockChain) *BundlePool {
@@ -79,11 +76,6 @@ func New(config Config, chain BlockChain) *BundlePool {
 		config:          config,
 		bundles:         make(map[common.Hash]*types.Bundle),
 		bundleGasPricer: NewBundleGasPricer(config.BundleGasPricerExpireTime),
-		journalBundleCh: make(chan *types.Bundle),
-	}
-
-	if config.Journal != "" {
-		pool.journal = newBundleJournal(config.Journal)
 	}
 
 	return pool
@@ -96,16 +88,6 @@ func (p *BundlePool) SetBundleSimulator(simulator BundleSimulator) {
 func (p *BundlePool) Init(gasTip *big.Int, head *types.Header, reserve txpool.AddressReserver) error {
 	// Set the basic pool parameters
 	p.reset(nil, head)
-
-	// If journaling is enabled, load from disk
-	if p.journal != nil {
-		if err := p.journal.load(p.addBundles); err != nil {
-			log.Warn("Failed to load bundle journal", "err", err)
-		}
-		if err := p.journal.rotate(p.bundles); err != nil {
-			log.Warn("Failed to rotate bundle journal", "err", err)
-		}
-	}
 	p.SetGasTip(gasTip)
 
 	// Since the user might have modified their pool's capacity, evict anything
@@ -128,25 +110,6 @@ func (p *BundlePool) Init(gasTip *big.Int, head *types.Header, reserve txpool.Ad
 // eviction events.
 func (p *BundlePool) loop() {
 	defer p.wg.Done()
-
-	journal := time.NewTicker(p.config.Rejournal)
-	defer journal.Stop()
-
-	for {
-		select {
-		case bundle := <-p.journalBundleCh:
-			p.journalBundle(bundle)
-		// Handle local transaction journal rotation
-		case <-journal.C:
-			if p.journal != nil {
-				p.mu.Lock()
-				if err := p.journal.rotate(p.bundles); err != nil {
-					log.Warn("Failed to rotate local bundle journal", "err", err)
-				}
-				p.mu.Unlock()
-			}
-		}
-	}
 }
 
 func (p *BundlePool) FilterBundle(bundle *types.Bundle) bool {
@@ -185,7 +148,6 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 	defer p.mu.Unlock()
 	p.bundles[hash] = bundle
 	p.slots += numSlots(bundle)
-	p.journalBundleCh <- bundle
 
 	bundleGauge.Update(int64(len(p.bundles)))
 	slotsGauge.Update(int64(p.slots))
@@ -362,16 +324,6 @@ func (p *BundlePool) addBundles(bundles []*types.Bundle) []error {
 		}
 	}
 	return errs
-}
-
-func (p *BundlePool) journalBundle(bundle *types.Bundle) {
-	// Only journal if it's enabled
-	if p.journal == nil {
-		return
-	}
-	if err := p.journal.insert(bundle); err != nil {
-		log.Warn("Failed to journal bundle", "err", err)
-	}
 }
 
 func (p *BundlePool) drop() {

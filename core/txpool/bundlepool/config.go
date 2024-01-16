@@ -7,9 +7,6 @@ import (
 )
 
 type Config struct {
-	Journal   string        // Journal of local transactions to survive node restarts
-	Rejournal time.Duration // Time interval to regenerate the local transaction journal
-
 	PriceLimit uint64 // Minimum gas price to enforce for acceptance into the pool
 	PriceBump  uint64 // Minimum price bump percentage to replace an already existing transaction (nonce)
 
@@ -24,9 +21,6 @@ type Config struct {
 
 // DefaultConfig contains the default configurations for the bundle pool.
 var DefaultConfig = Config{
-	Journal:   "bundles.rlp",
-	Rejournal: time.Hour,
-
 	PriceLimit: 1,
 	PriceBump:  10,
 
@@ -43,10 +37,6 @@ var DefaultConfig = Config{
 // unreasonable or unworkable.
 func (config *Config) sanitize() Config {
 	conf := *config
-	if conf.Rejournal < time.Second {
-		log.Warn("Sanitizing invalid txpool journal time", "provided", conf.Rejournal, "updated", time.Second)
-		conf.Rejournal = DefaultConfig.Rejournal
-	}
 	if conf.PriceLimit < 1 {
 		log.Warn("Sanitizing invalid txpool price limit", "provided", conf.PriceLimit, "updated", DefaultConfig.PriceLimit)
 		conf.PriceLimit = DefaultConfig.PriceLimit
