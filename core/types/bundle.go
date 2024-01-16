@@ -2,6 +2,7 @@ package types
 
 import (
 	"math/big"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -9,13 +10,16 @@ import (
 
 type Bundle struct {
 	Txs               Transactions
-	MaxBlockNumber    int64
+	MaxBlockNumber    uint64
 	MinTimestamp      uint64
 	MaxTimestamp      uint64
 	RevertingTxHashes []common.Hash
 
-	Hash  common.Hash `rlp:"-"`
-	Price *big.Int    // for bundle compare and prune
+	Price *big.Int // for bundle compare and prune
+
+	// caches
+	hash atomic.Value
+	size atomic.Value
 }
 
 type SimulatedBundle struct {
@@ -29,8 +33,24 @@ type SimulatedBundle struct {
 }
 
 func (bundle *Bundle) Size() uint64 {
+	if size := bundle.size.Load(); size != nil {
+		return size.(uint64)
+	}
 	c := writeCounter(0)
-	rlp.Encode(&c, &bundle)
+	rlp.Encode(&c, bundle)
+
 	size := uint64(c)
+	bundle.size.Store(size)
 	return size
+}
+
+// Hash returns the bundle hash.
+func (bundle *Bundle) Hash() common.Hash {
+	if hash := bundle.hash.Load(); hash != nil {
+		return hash.(common.Hash)
+	}
+
+	h := rlpHash(bundle)
+	bundle.hash.Store(h)
+	return h
 }

@@ -14,12 +14,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
 )
 
 const (
@@ -53,14 +51,12 @@ type BundleSimulator interface {
 }
 
 type BundlePool struct {
-	config  Config
-	chain   BlockChain
-	mu      sync.RWMutex
-	reserve txpool.AddressReserver // Address reserver to ensure exclusivity across subpools
-
+	config Config
 	gasTip *uint256.Int // Currently accepted minimum gas tip
 
 	bundles map[common.Hash]*types.Bundle
+	mu      sync.RWMutex
+
 	journal *journal // Journal of local transaction to back up to disk
 	slots   uint64   // Number of slots currently allocated
 
@@ -76,7 +72,6 @@ func New(config Config, chain BlockChain) *BundlePool {
 
 	pool := &BundlePool{
 		config:          config,
-		chain:           chain,
 		bundles:         make(map[common.Hash]*types.Bundle),
 		bundleGasPricer: NewBundleGasPricer(config.BundleGasPricerExpireTime),
 	}
@@ -93,8 +88,6 @@ func (p *BundlePool) SetBundleSimulator(simulator BundleSimulator) {
 }
 
 func (p *BundlePool) Init(gasTip *big.Int, head *types.Header, reserve txpool.AddressReserver) error {
-	p.reserve = reserve
-
 	// Set the basic pool parameters
 	p.reset(nil, head)
 
@@ -111,7 +104,7 @@ func (p *BundlePool) Init(gasTip *big.Int, head *types.Header, reserve txpool.Ad
 
 	// Since the user might have modified their pool's capacity, evict anything
 	// above the current allowance
-	for p.slots > p.config.BundleSlots {
+	for p.slots > p.config.GlobalSlots {
 		p.drop()
 	}
 
@@ -163,13 +156,6 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 		return txpool.ErrSimulatorMissing
 	}
 
-	bz, err := rlp.EncodeToBytes(bundle)
-	if err != nil {
-		return err
-	}
-	hash := crypto.Keccak256Hash(bz)
-	bundle.Hash = hash
-
 	price, err := p.simulator.SimulateBundle(bundle)
 	if err != nil {
 		return err
@@ -182,14 +168,15 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	hash := bundle.Hash()
 	if _, ok := p.bundles[hash]; ok {
 		return txpool.ErrBundleAlreadyExist
 	}
-	for p.slots+uint64(numSlots(bundle)) > p.config.BundleSlots {
+	for p.slots+numSlots(bundle) > p.config.GlobalSlots {
 		p.drop()
 	}
 	p.bundles[hash] = bundle
-	p.slots += uint64(numSlots(bundle))
+	p.slots += numSlots(bundle)
 	p.journalBundle(bundle)
 
 	bundleGauge.Update(int64(len(p.bundles)))
@@ -207,25 +194,16 @@ func (p *BundlePool) GetBundle(hash common.Hash) *types.Bundle {
 func (p *BundlePool) PruneBundle(hash common.Hash) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	p.slots -= uint64(numSlots(p.bundles[hash]))
+	p.slots -= numSlots(p.bundles[hash])
 	delete(p.bundles, hash)
 }
 
 func (p *BundlePool) PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	// returned values
 	var ret []*types.Bundle
 	for hash, bundle := range p.bundles {
-		if bundle.Txs.Len() == 0 {
-			p.PruneBundle(hash)
-			continue
-		}
-
 		// Prune outdated bundles
 		if (bundle.MaxTimestamp != 0 && blockTimestamp > bundle.MaxTimestamp) ||
-			blockNumber.Cmp(big.NewInt(bundle.MaxBlockNumber)) > 0 {
+			blockNumber.Cmp(new(big.Int).SetUint64(bundle.MaxBlockNumber)) > 0 {
 			p.PruneBundle(hash)
 			continue
 		}
@@ -475,6 +453,6 @@ func (pool *BundleGasPricer) Clear() {
 }
 
 // numSlots calculates the number of slots needed for a single bundle.
-func numSlots(bundle *types.Bundle) int {
-	return int((bundle.Size() + bundleSlotSize - 1) / bundleSlotSize)
+func numSlots(bundle *types.Bundle) uint64 {
+	return (bundle.Size() + bundleSlotSize - 1) / bundleSlotSize
 }

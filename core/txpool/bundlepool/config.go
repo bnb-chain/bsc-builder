@@ -13,7 +13,7 @@ type Config struct {
 	PriceLimit uint64 // Minimum gas price to enforce for acceptance into the pool
 	PriceBump  uint64 // Minimum price bump percentage to replace an already existing transaction (nonce)
 
-	BundleSlots     uint64 // Maximum number of bundle slots for all accounts
+	GlobalSlots     uint64 // Maximum number of bundle slots for all accounts
 	GlobalQueue     uint64 // Maximum number of non-executable bundle slots for all accounts
 	MaxBundleBlocks uint64 // Maximum number of blocks for calculating MinimalBundleGasPrice
 
@@ -30,7 +30,7 @@ var DefaultConfig = Config{
 	PriceLimit: 1,
 	PriceBump:  10,
 
-	BundleSlots: 4096 + 1024, // urgent + floating queue capacity with 4:1 ratio
+	GlobalSlots: 4096 + 1024, // urgent + floating queue capacity with 4:1 ratio
 	GlobalQueue: 1024,
 
 	MaxBundleBlocks:               50,
@@ -55,9 +55,9 @@ func (config *Config) sanitize() Config {
 		log.Warn("Sanitizing invalid txpool price bump", "provided", conf.PriceBump, "updated", DefaultConfig.PriceBump)
 		conf.PriceBump = DefaultConfig.PriceBump
 	}
-	if conf.BundleSlots < 1 {
-		log.Warn("Sanitizing invalid txpool bundle slots", "provided", conf.BundleSlots, "updated", DefaultConfig.BundleSlots)
-		conf.BundleSlots = DefaultConfig.BundleSlots
+	if conf.GlobalSlots < 1 {
+		log.Warn("Sanitizing invalid txpool bundle slots", "provided", conf.GlobalSlots, "updated", DefaultConfig.GlobalSlots)
+		conf.GlobalSlots = DefaultConfig.GlobalSlots
 	}
 	if conf.GlobalQueue < 1 {
 		log.Warn("Sanitizing invalid txpool global queue", "provided", conf.GlobalQueue, "updated", DefaultConfig.GlobalQueue)
