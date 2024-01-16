@@ -67,7 +67,8 @@ type BundlePool struct {
 	bundleGasPricer *BundleGasPricer
 	simulator       BundleSimulator
 
-	wg sync.WaitGroup
+	journalBundleCh chan *types.Bundle
+	wg              sync.WaitGroup
 }
 
 func New(config Config, chain BlockChain) *BundlePool {
@@ -78,6 +79,7 @@ func New(config Config, chain BlockChain) *BundlePool {
 		config:          config,
 		bundles:         make(map[common.Hash]*types.Bundle),
 		bundleGasPricer: NewBundleGasPricer(config.BundleGasPricerExpireTime),
+		journalBundleCh: make(chan *types.Bundle),
 	}
 
 	if config.Journal != "" {
@@ -132,6 +134,8 @@ func (p *BundlePool) loop() {
 
 	for {
 		select {
+		case bundle := <-p.journalBundleCh:
+			p.journalBundle(bundle)
 		// Handle local transaction journal rotation
 		case <-journal.C:
 			if p.journal != nil {
@@ -181,7 +185,7 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 	defer p.mu.Unlock()
 	p.bundles[hash] = bundle
 	p.slots += numSlots(bundle)
-	p.journalBundle(bundle)
+	p.journalBundleCh <- bundle
 
 	bundleGauge.Update(int64(len(p.bundles)))
 	slotsGauge.Update(int64(p.slots))
