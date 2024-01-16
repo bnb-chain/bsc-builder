@@ -1,7 +1,6 @@
 package bundlepool
 
 import (
-	"errors"
 	"math"
 	"math/big"
 	"sync"
@@ -13,21 +12,26 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/rlp"
+	"sync/atomic"
+)
+
+const (
+	// TODO: decide on a good default value
+	// bundleSlotSize is used to calculate how many data slots a single bundle
+	// takes up based on its size. The slots are used as DoS protection, ensuring
+	// that validating a new bundle remains a constant operation (in reality
+	// O(maxslots), where max slots are 4 currently).
+	bundleSlotSize = 128 * 1024 // 128KB
 )
 
 var (
-	ErrSimulatorMissing   = errors.New("bundle simulator is missing")
-	ErrBundleGasPriceLow  = errors.New("bundle gas price is too low")
-	ErrBundleAlreadyExist = errors.New("bundle already exist")
-	ErrBundlePoolOverflow = errors.New("bundle pool is full")
+	bundleGauge = metrics.NewRegisteredGauge("bundlepool/bundles", nil)
+	slotsGauge  = metrics.NewRegisteredGauge("bundlepool/slots", nil)
 )
-
-var bundleGauge = metrics.NewRegisteredGauge("txpool/bundles", nil)
 
 // BlockChain defines the minimal set of methods needed to back a tx pool with
 // a chain. Exists to allow mocking the live chain out of tests.
@@ -49,47 +53,77 @@ type BundleSimulator interface {
 	SimulateBundle(bundle *types.Bundle) (*big.Int, error)
 }
 
-type Config struct {
-	PriceLimit uint64 // Minimum gas price to enforce for acceptance into the pool
-	PriceBump  uint64 // Minimum price bump percentage to replace an already existing transaction (nonce)
-
-	BundleSlot      uint64 // Maximum number of bundle slots for all accounts
-	GlobalQueue     uint64 // Maximum number of non-executable bundle slots for all accounts
-	MaxBundleBlocks uint64 // Maximum number of blocks for calculating MinimalBundleGasPrice
-
-	BundleGasPricePercentile      uint8         // Percentile of the recent minimal mev gas price
-	BundleGasPricerExpireTime     time.Duration // Store time duration amount of recent mev gas price
-	UpdateBundleGasPricerInterval time.Duration // Time interval to update MevGasPricePool
-}
-
 type BundlePool struct {
 	config Config
-	chain  BlockChain
-	mu     sync.RWMutex
+	gasTip atomic.Pointer[big.Int] // Currently accepted minimum gas tip
 
-	bundles         map[common.Hash]*types.Bundle
+	bundles map[common.Hash]*types.Bundle
+	mu      sync.RWMutex
+
+	slots uint64 // Number of slots currently allocated
+
 	bundleGasPricer *BundleGasPricer
 	simulator       BundleSimulator
+
+	wg         sync.WaitGroup
+	shutdownCh chan struct{}
 }
 
 func New(config Config, chain BlockChain) *BundlePool {
-	return &BundlePool{
+	// Sanitize the input to ensure no vulnerable gas prices are set
+	config = (&config).sanitize()
+
+	pool := &BundlePool{
+		config:          config,
+		bundles:         make(map[common.Hash]*types.Bundle),
 		bundleGasPricer: NewBundleGasPricer(config.BundleGasPricerExpireTime),
+		shutdownCh:      make(chan struct{}),
+	}
+
+	return pool
+}
+
+func (p *BundlePool) SetBundleSimulator(simulator BundleSimulator) {
+	p.simulator = simulator
+}
+
+func (p *BundlePool) Init(gasTip *big.Int, head *types.Header, reserve txpool.AddressReserver) error {
+	// Set the basic pool parameters
+	p.reset(nil, head)
+	p.SetGasTip(gasTip)
+
+	// Since the user might have modified their pool's capacity, evict anything
+	// above the current allowance
+	for p.slots > p.config.GlobalSlots {
+		p.drop()
+	}
+
+	bundleGauge.Update(int64(len(p.bundles)))
+	slotsGauge.Update(int64(p.slots))
+
+	p.wg.Add(1)
+	go p.loop()
+
+	return nil
+}
+
+// loop is the transaction pool's main event loop, waiting for and reacting to
+// outside blockchain events as well as for various reporting and transaction
+// eviction events.
+func (p *BundlePool) loop() {
+	defer p.wg.Done()
+
+	for {
+		select {
+		case <-p.shutdownCh:
+			return
+		}
 	}
 }
 
-func (pool *BundlePool) SetBundleSimulator(simulator BundleSimulator) {
-	pool.simulator = simulator
-}
-
-func (pool *BundlePool) Init(gasTip *big.Int, head *types.Header, reserve txpool.AddressReserver) error {
-	// TODO implement me
-	panic("implement me")
-}
-
-func (pool *BundlePool) FilterBundle(bundle *types.Bundle) bool {
+func (p *BundlePool) FilterBundle(bundle *types.Bundle) bool {
 	for _, tx := range bundle.Txs {
-		if !pool.filter(tx) {
+		if !p.filter(tx) {
 			return false
 		}
 	}
@@ -97,206 +131,231 @@ func (pool *BundlePool) FilterBundle(bundle *types.Bundle) bool {
 }
 
 // AddBundle adds a mev bundle to the pool
-func (pool *BundlePool) AddBundle(bundle *types.Bundle) error {
-	if pool.simulator == nil {
-		return ErrSimulatorMissing
+func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
+	if p.simulator == nil {
+		return txpool.ErrSimulatorMissing
 	}
 
-	bz, err := rlp.EncodeToBytes(bundle)
+	price, err := p.simulator.SimulateBundle(bundle)
 	if err != nil {
 		return err
 	}
-	hash := crypto.Keccak256Hash(bz)
-	bundle.Hash = hash
-
-	price, err := pool.simulator.SimulateBundle(bundle)
-	if err != nil {
-		return err
-	}
-	minimalGasPrice := pool.bundleGasPricer.MinimalBundleGasPrice()
+	minimalGasPrice := p.bundleGasPricer.MinimalBundleGasPrice()
 	if price.Cmp(minimalGasPrice) < 0 {
-		return ErrBundleGasPriceLow
+		return txpool.ErrBundleGasPriceLow
 	}
 	bundle.Price = price
 
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-	if _, ok := pool.bundles[hash]; ok {
-		return ErrBundleAlreadyExist
+	hash := bundle.Hash()
+	if _, ok := p.bundles[hash]; ok {
+		return txpool.ErrBundleAlreadyExist
 	}
-	if len(pool.bundles) > int(pool.config.BundleSlot) {
-		leastPrice := big.NewInt(math.MaxInt64)
-		leastBundleHash := common.Hash{}
-		for h, b := range pool.bundles {
-			if b.Price.Cmp(leastPrice) < 0 {
-				leastPrice = b.Price
-				leastBundleHash = h
-			}
-		}
-		if bundle.Price.Cmp(leastPrice) < 0 {
-			return ErrBundlePoolOverflow
-		}
-		delete(pool.bundles, leastBundleHash)
+	for p.slots+numSlots(bundle) > p.config.GlobalSlots {
+		p.drop()
 	}
-	pool.bundles[hash] = bundle
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.bundles[hash] = bundle
+	p.slots += numSlots(bundle)
 
-	bundleGauge.Update(int64(len(pool.bundles)))
+	bundleGauge.Update(int64(len(p.bundles)))
+	slotsGauge.Update(int64(p.slots))
 	return nil
 }
 
-func (pool *BundlePool) PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
+func (p *BundlePool) GetBundle(hash common.Hash) *types.Bundle {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 
-	// returned values
+	return p.bundles[hash]
+}
+
+func (p *BundlePool) PruneBundle(hash common.Hash) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.slots -= numSlots(p.bundles[hash])
+	delete(p.bundles, hash)
+}
+
+func (p *BundlePool) PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle {
 	var ret []*types.Bundle
-	// rolled over values
-	bundles := make(map[common.Hash]*types.Bundle)
-
-	for uid, bundle := range pool.bundles {
+	for hash, bundle := range p.bundles {
 		// Prune outdated bundles
 		if (bundle.MaxTimestamp != 0 && blockTimestamp > bundle.MaxTimestamp) ||
-			blockNumber.Cmp(big.NewInt(bundle.MaxBlockNumber)) > 0 {
+			blockNumber.Cmp(new(big.Int).SetUint64(bundle.MaxBlockNumber)) > 0 {
+			p.PruneBundle(hash)
 			continue
 		}
 
 		// Roll over future bundles
 		if bundle.MinTimestamp != 0 && blockTimestamp < bundle.MinTimestamp {
-			bundles[uid] = bundle
 			continue
 		}
 
 		// return the ones that are in time
 		ret = append(ret, bundle)
-		// keep the bundles around internally until they need to be pruned
-		bundles[uid] = bundle
-
-		if bundle.Txs.Len() == 0 {
-			continue
-		}
 	}
 
-	pool.bundles = bundles
+	bundleGauge.Update(int64(len(p.bundles)))
+	slotsGauge.Update(int64(p.slots))
 	return ret
 }
 
 // AllBundles returns all the bundles currently in the pool
-func (pool *BundlePool) AllBundles() []*types.Bundle {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-	bundles := make([]*types.Bundle, 0, len(pool.bundles))
-	for _, bundle := range pool.bundles {
+func (p *BundlePool) AllBundles() []*types.Bundle {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	bundles := make([]*types.Bundle, 0, len(p.bundles))
+	for _, bundle := range p.bundles {
 		bundles = append(bundles, bundle)
 	}
 	return bundles
 }
 
-func (pool *BundlePool) Filter(tx *types.Transaction) bool {
+func (p *BundlePool) Filter(tx *types.Transaction) bool {
 	return false
 }
 
-func (pool *BundlePool) Close() error {
-	// TODO implement me
-	panic("implement me")
+func (p *BundlePool) Close() error {
+	close(p.shutdownCh)
+	p.wg.Wait()
+
+	log.Info("Bundle pool stopped")
+	return nil
 }
 
-func (pool *BundlePool) Reset(oldHead, newHead *types.Header) {
+func (p *BundlePool) Reset(oldHead, newHead *types.Header) {
 	// TODO implement me
 	panic("implement me")
 }
 
 // SetGasTip updates the minimum price required by the subpool for a new
 // transaction, and drops all transactions below this threshold.
-func (pool *BundlePool) SetGasTip(tip *big.Int) {
-	// TODO implement me
-	panic("implement me")
+func (p *BundlePool) SetGasTip(tip *big.Int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	old := p.gasTip.Load()
+	p.gasTip.Store(new(big.Int).Set(tip))
+
+	if tip.Cmp(old) > 0 {
+		// TODO
+	}
+	log.Info("Bundle pool tip threshold updated", "tip", tip)
 }
 
 // Has returns an indicator whether subpool has a transaction cached with the
 // given hash.
-func (pool *BundlePool) Has(hash common.Hash) bool {
+func (p *BundlePool) Has(hash common.Hash) bool {
 	return false
 }
 
 // Get returns a transaction if it is contained in the pool, or nil otherwise.
-func (pool *BundlePool) Get(hash common.Hash) *txpool.Transaction {
+func (p *BundlePool) Get(hash common.Hash) *txpool.Transaction {
 	return nil
 }
 
 // Add enqueues a batch of transactions into the pool if they are valid. Due
 // to the large transaction churn, add may postpone fully integrating the tx
 // to a later point to batch multiple ones together.
-func (pool *BundlePool) Add(txs []*txpool.Transaction, local bool, sync bool) []error {
+func (p *BundlePool) Add(txs []*txpool.Transaction, local bool, sync bool) []error {
 	return nil
 }
 
 // Pending retrieves all currently processable transactions, grouped by origin
 // account and sorted by nonce.
-func (pool *BundlePool) Pending(enforceTips bool) map[common.Address][]*txpool.LazyTransaction {
+func (p *BundlePool) Pending(enforceTips bool) map[common.Address][]*txpool.LazyTransaction {
 	return nil
 }
 
 // SubscribeTransactions subscribes to new transaction events.
-func (pool *BundlePool) SubscribeTransactions(ch chan<- core.NewTxsEvent) event.Subscription {
+func (p *BundlePool) SubscribeTransactions(ch chan<- core.NewTxsEvent) event.Subscription {
 	// TODO implement me
 	panic("implement me")
 }
 
 // SubscribeReannoTxsEvent should return an event subscription of
 // ReannoTxsEvent and send events to the given channel.
-func (pool *BundlePool) SubscribeReannoTxsEvent(chan<- core.ReannoTxsEvent) event.Subscription {
+func (p *BundlePool) SubscribeReannoTxsEvent(chan<- core.ReannoTxsEvent) event.Subscription {
 	// TODO implement me
 	panic("implement me")
 }
 
 // Nonce returns the next nonce of an account, with all transactions executable
-// by the pool already applied on top.
-func (pool *BundlePool) Nonce(addr common.Address) uint64 {
+// by the pool already applied on topool.
+func (p *BundlePool) Nonce(addr common.Address) uint64 {
 	// TODO implement me
 	panic("implement me")
 }
 
 // Stats retrieves the current pool stats, namely the number of pending and the
 // number of queued (non-executable) transactions.
-func (pool *BundlePool) Stats() (int, int) {
+func (p *BundlePool) Stats() (int, int) {
 	// TODO implement me
 	panic("implement me")
 }
 
 // Content retrieves the data content of the transaction pool, returning all the
 // pending as well as queued transactions, grouped by account and sorted by nonce.
-func (pool *BundlePool) Content() (map[common.Address][]*types.Transaction, map[common.Address][]*types.Transaction) {
+func (p *BundlePool) Content() (map[common.Address][]*types.Transaction, map[common.Address][]*types.Transaction) {
 	// TODO implement me
 	panic("implement me")
 }
 
 // ContentFrom retrieves the data content of the transaction pool, returning the
 // pending as well as queued transactions of this address, grouped by nonce.
-func (pool *BundlePool) ContentFrom(addr common.Address) ([]*types.Transaction, []*types.Transaction) {
+func (p *BundlePool) ContentFrom(addr common.Address) ([]*types.Transaction, []*types.Transaction) {
 	// TODO implement me
 	panic("implement me")
 }
 
 // Locals retrieves the accounts currently considered local by the pool.
-func (pool *BundlePool) Locals() []common.Address {
+func (p *BundlePool) Locals() []common.Address {
 	// TODO implement me
 	panic("implement me")
 }
 
 // Status returns the known status (unknown/pending/queued) of a transaction
 // identified by their hashes.
-func (pool *BundlePool) Status(hash common.Hash) txpool.TxStatus {
+func (p *BundlePool) Status(hash common.Hash) txpool.TxStatus {
 	// TODO implement me
 	panic("implement me")
 }
 
-func (pool *BundlePool) filter(tx *types.Transaction) bool {
+func (p *BundlePool) filter(tx *types.Transaction) bool {
 	switch tx.Type() {
 	case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType:
 		return true
 	default:
 		return false
 	}
+}
+
+func (p *BundlePool) reset(oldHead, newHead *types.Header) {
+	// TODO implement me
+	panic("implement me")
+}
+
+func (p *BundlePool) addBundles(bundles []*types.Bundle) []error {
+	errs := make([]error, len(bundles))
+	for i, bundle := range bundles {
+		if err := p.AddBundle(bundle); err != nil {
+			errs[i] = err
+		}
+	}
+	return errs
+}
+
+func (p *BundlePool) drop() {
+	leastPrice := big.NewInt(math.MaxInt64)
+	leastBundleHash := common.Hash{}
+	for h, b := range p.bundles {
+		if b.Price.Cmp(leastPrice) < 0 {
+			leastPrice = b.Price
+			leastBundleHash = h
+		}
+	}
+	p.PruneBundle(leastBundleHash)
 }
 
 // =====================================================================================================================
@@ -371,4 +430,9 @@ func (pool *BundleGasPricer) Clear() {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 	pool.queue.Reset()
+}
+
+// numSlots calculates the number of slots needed for a single bundle.
+func numSlots(bundle *types.Bundle) uint64 {
+	return (bundle.Size() + bundleSlotSize - 1) / bundleSlotSize
 }

@@ -204,6 +204,14 @@ func (b *LesApiBackend) SendBundle(ctx context.Context, bundle *types.Bundle) er
 	return b.eth.txPool.AddBundle(bundle)
 }
 
+func (b *LesApiBackend) MinimalBundleGasPrice() *big.Int {
+	return nil
+}
+
+func (b *LesApiBackend) BundlePrice() *big.Int {
+	return nil
+}
+
 func (b *LesApiBackend) RemoveTx(txHash common.Hash) {
 	b.eth.txPool.RemoveTx(txHash)
 }

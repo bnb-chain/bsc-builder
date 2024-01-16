@@ -107,7 +107,7 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs
 
 	bundle := &types.Bundle{
 		Txs:               txs,
-		MaxBlockNumber:    args.MaxBlockNumber.Int64(),
+		MaxBlockNumber:    uint64(args.MaxBlockNumber),
 		MinTimestamp:      minTimestamp,
 		MaxTimestamp:      maxTimestamp,
 		RevertingTxHashes: args.RevertingTxHashes,

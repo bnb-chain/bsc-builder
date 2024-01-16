@@ -28,6 +28,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/holiman/billy"
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
@@ -41,8 +44,6 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/holiman/billy"
-	"github.com/holiman/uint256"
 )
 
 const (
@@ -1477,7 +1478,7 @@ func (p *BlobPool) SubscribeTransactions(ch chan<- core.NewTxsEvent) event.Subsc
 
 // SubscribeReannoTxsEvent registers a subscription of ReannoTxsEvent and
 // starts sending event to the given channel.
-func (pool *BlobPool) SubscribeReannoTxsEvent(ch chan<- core.ReannoTxsEvent) event.Subscription {
+func (p *BlobPool) SubscribeReannoTxsEvent(ch chan<- core.ReannoTxsEvent) event.Subscription {
 	panic("not supported")
 }
 
@@ -1538,4 +1539,20 @@ func (p *BlobPool) Status(hash common.Hash) txpool.TxStatus {
 		return txpool.TxStatusPending
 	}
 	return txpool.TxStatusUnknown
+}
+
+func (p *BlobPool) FilterBundle(bundle *types.Bundle) bool {
+	panic("not supported")
+}
+
+func (p *BlobPool) AddBundle(bundle *types.Bundle) error {
+	panic("not supported")
+}
+
+func (p *BlobPool) PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle {
+	panic("not supported")
+}
+
+func (p *BlobPool) AllBundles() []*types.Bundle {
+	panic("not supported")
 }
