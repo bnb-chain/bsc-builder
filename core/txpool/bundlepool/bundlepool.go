@@ -22,6 +22,10 @@ import (
 
 const (
 	// TODO: decide on a good default value
+	// bundleSlotSize is used to calculate how many data slots a single bundle
+	// takes up based on its size. The slots are used as DoS protection, ensuring
+	// that validating a new bundle remains a constant operation (in reality
+	// O(maxslots), where max slots are 4 currently).
 	bundleSlotSize = 128 * 1024 // 128KB
 )
 
