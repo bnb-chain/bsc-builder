@@ -170,8 +170,6 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 	}
 	bundle.Price = price
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	hash := bundle.Hash()
 	if _, ok := p.bundles[hash]; ok {
 		return txpool.ErrBundleAlreadyExist
@@ -179,6 +177,8 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 	for p.slots+numSlots(bundle) > p.config.GlobalSlots {
 		p.drop()
 	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.bundles[hash] = bundle
 	p.slots += numSlots(bundle)
 	p.journalBundle(bundle)
