@@ -318,6 +318,7 @@ func (p *TxPool) AddBundle(bundle *types.Bundle) error {
 	return errors.New("no subpool accepts the bundle")
 }
 
+// PruneBundle removes a bundle from the pool.
 func (p *TxPool) PruneBundle(hash common.Hash) {
 	for _, subpool := range p.subpools {
 		subpool.PruneBundle(hash)

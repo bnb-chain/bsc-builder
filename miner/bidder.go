@@ -109,7 +109,7 @@ func (b *bidder) Bid(work *environment) {
 	}
 
 	// if the work is not better than the current best work, ignore it
-	if !b.winBestWork(work) {
+	if !b.isBestWork(work) {
 		return
 	}
 
@@ -189,8 +189,12 @@ func (b *bidder) bid(work *environment) {
 	return
 }
 
-// winBestWork returns the work is better than the current best work
-func (b *bidder) winBestWork(work *environment) bool {
+// isBestWork returns the work is better than the current best work
+func (b *bidder) isBestWork(work *environment) bool {
+	if work.blockReward == nil {
+		return false
+	}
+
 	return b.getBestWork(work.header.Number.Int64()).blockReward.Cmp(work.blockReward) < 0
 }
 

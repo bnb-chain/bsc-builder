@@ -54,8 +54,7 @@ type Config struct {
 	Recommit      time.Duration  // The time interval for miner to re-create mining work.
 	VoteEnable    bool           // Whether to vote when mining
 
-	MaxSimulateBundles int   `toml:",omitempty"`
-	MevGasPriceFloor   int64 `toml:",omitempty"`
+	MevGasPriceFloor int64 `toml:",omitempty"`
 
 	NewPayloadTimeout      time.Duration // The maximum time allowance for creating a new payload
 	DisableVoteAttestation bool          // Whether to skip assembling vote attestation
@@ -274,4 +273,47 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 // BuildPayload builds the payload according to the provided parameters.
 func (miner *Miner) BuildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	return miner.worker.buildPayload(args)
+}
+
+func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
+	parent := miner.eth.BlockChain().CurrentBlock()
+	num := parent.Number
+	timestamp := time.Now().Unix()
+	if parent.Time >= uint64(timestamp) {
+		timestamp = int64(parent.Time + 1)
+	}
+
+	header := &types.Header{
+		ParentHash: parent.Hash(),
+		Number:     num.Add(num, common.Big1),
+		GasLimit:   core.CalcGasLimit(parent.GasLimit, miner.worker.config.GasCeil),
+		Extra:      miner.worker.extra,
+		Time:       uint64(timestamp),
+	}
+
+	header.Coinbase = miner.worker.etherbase()
+
+	if err := miner.worker.engine.Prepare(miner.eth.BlockChain(), header); err != nil {
+		return nil, err
+	}
+
+	gasPool := new(core.GasPool).AddGas(header.GasLimit)
+	gasPool.SubGas(params.SystemTxsGas)
+
+	state, err := miner.eth.BlockChain().StateAt(parent.Root)
+	if err != nil {
+		return nil, err
+	}
+
+	env := &environment{
+		header: header,
+		state:  state.Copy(),
+		signer: types.MakeSigner(miner.worker.chainConfig, header.Number, header.Time),
+	}
+
+	s, err := miner.worker.simulateBundles(env, []*types.Bundle{bundle}, nil)
+	if err != nil {
+		return nil, err
+	}
+	return s[0].BundleGasPrice, nil
 }
