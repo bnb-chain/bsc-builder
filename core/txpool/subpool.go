@@ -152,4 +152,6 @@ type SubPool interface {
 
 	// AllBundles returns all the bundles currently in the pool.
 	AllBundles() []*types.Bundle
+
+	PruneBundle(hash common.Hash)
 }

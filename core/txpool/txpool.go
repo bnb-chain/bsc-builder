@@ -318,6 +318,12 @@ func (p *TxPool) AddBundle(bundle *types.Bundle) error {
 	return errors.New("no subpool accepts the bundle")
 }
 
+func (p *TxPool) PruneBundle(hash common.Hash) {
+	for _, subpool := range p.subpools {
+		subpool.PruneBundle(hash)
+	}
+}
+
 func (p *TxPool) MinimalBundleGasPrice() *big.Int {
 	for _, subpool := range p.subpools {
 		if gasPricer, ok := subpool.(MevGasPricer); ok {

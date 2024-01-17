@@ -29,7 +29,7 @@ type SimulatedBundle struct {
 	TotalEth          *big.Int
 	EthSentToCoinbase *big.Int
 	TotalGasUsed      uint64
-	OriginalBundle    *Bundle
+	OriginalBundle    Bundle
 }
 
 func (bundle *Bundle) Size() uint64 {
