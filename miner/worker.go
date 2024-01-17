@@ -222,7 +222,9 @@ type worker struct {
 	resubmitHook      func(time.Duration, time.Duration) // Method to call upon updating resubmitting interval.
 	recentMinedBlocks *lru.Cache
 
-	bidder *bidder
+	// MEV
+	bidder      *bidder
+	bundleCache *BundleCache
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
@@ -249,6 +251,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		resubmitIntervalCh: make(chan time.Duration),
 		recentMinedBlocks:  recentMinedBlocks,
 		bidder:             NewBidder(&config.Bidder, engine, eth.BlockChain()),
+		bundleCache:        NewBundleCache(),
 	}
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
@@ -726,7 +729,7 @@ func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAn
 
 	stopPrefetchCh := make(chan struct{})
 	defer close(stopPrefetchCh)
-	//prefetch txs from all pending txs
+	// prefetch txs from all pending txs
 	txsPrefetch := txs.Copy()
 	tx := txsPrefetch.PeekWithUnwrap()
 	if tx != nil {
