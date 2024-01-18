@@ -17,8 +17,8 @@ import (
 )
 
 var (
-	errUnrevertingTxInBundleFailed = errors.New("unreverting tx in bundle failed")
-	errBundlePriceTooLow           = errors.New("bundle price too low")
+	errNonRevertingTxInBundleFailed = errors.New("non-reverting tx in bundle failed")
+	errBundlePriceTooLow            = errors.New("bundle price too low")
 )
 
 // commitWorkV2
@@ -61,7 +61,6 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 
 	{
 		txs, _, err := w.generateOrderedBundles(env, bundles, pending)
-
 		if err != nil {
 			log.Error("fail to generate ordered bundles", "err", err)
 			return err
@@ -104,10 +103,10 @@ func (w *worker) commitBundles(
 	env *environment,
 	txs types.Transactions,
 	interruptCh chan int32,
-	stopTimer *time.Timer) error {
+	stopTimer *time.Timer,
+) error {
 	if env.gasPool == nil {
-		env.gasPool = new(core.GasPool).AddGas(env.header.GasLimit)
-		env.gasPool.SubGas(params.SystemTxsGas)
+		env.gasPool = prepareGasPool(env.header.GasLimit)
 	}
 
 	var coalescedLogs []*types.Log
@@ -276,9 +275,7 @@ func (w *worker) simulateBundles(
 			defer wg.Done()
 
 			gasPool := prepareGasPool(env.header.GasLimit)
-			simmed, err := w.simulateBundle(env.header, state, env.signer, gasPool, bundle,
-				pendingTxs, 0, true, true)
-
+			simmed, err := w.simulateBundle(env, bundle, state, gasPool, pendingTxs, 0, true, true)
 			if err != nil {
 				log.Trace("Error computing gas for a simulateBundle", "error", err)
 				return
@@ -300,7 +297,7 @@ func (w *worker) simulateBundles(
 		simulatedBundles = append(simulatedBundles, bundle)
 	}
 
-	simCache.UpdateSimulatedBundles(simulatedBundles)
+	simCache.UpdateSimulatedBundles(simResult, bundles)
 
 	return simulatedBundles, nil
 }
@@ -329,7 +326,7 @@ func (w *worker) mergeBundles(
 		floorGasPrice := new(big.Int).Mul(bundle.BundleGasPrice, big.NewInt(99))
 		floorGasPrice = floorGasPrice.Div(floorGasPrice, big.NewInt(100))
 
-		simulatedBundle, err := w.simulateBundle(env.header, currentState, env.signer, gasPool, bundle.OriginalBundle,
+		simulatedBundle, err := w.simulateBundle(env, bundle.OriginalBundle, currentState, gasPool,
 			pendingTxs, len(includedTxs), true, false)
 
 		if err != nil || simulatedBundle.BundleGasPrice.Cmp(floorGasPrice) <= 0 {
@@ -347,7 +344,7 @@ func (w *worker) mergeBundles(
 
 		includedTxs = append(includedTxs, bundle.OriginalBundle.Txs...)
 
-		mergedBundle.BundleGasFees = big.NewInt(0).Add(mergedBundle.BundleGasPrice, simulatedBundle.BundleGasPrice)
+		mergedBundle.BundleGasFees.Add(mergedBundle.BundleGasFees, simulatedBundle.BundleGasFees)
 		mergedBundle.BundleGasUsed += simulatedBundle.BundleGasUsed
 	}
 
@@ -355,8 +352,7 @@ func (w *worker) mergeBundles(
 		return nil, nil, errors.New("include no txs when merge bundles")
 	}
 
-	mergedBundle.BundleGasPrice = new(big.Int).Div(mergedBundle.BundleGasFees,
-		new(big.Int).SetUint64(mergedBundle.BundleGasUsed))
+	mergedBundle.BundleGasPrice.Div(mergedBundle.BundleGasFees, new(big.Int).SetUint64(mergedBundle.BundleGasUsed))
 
 	return includedTxs, &mergedBundle, nil
 }
@@ -364,38 +360,40 @@ func (w *worker) mergeBundles(
 // simulateBundle computes the gas price for a whole simulateBundle based on the same ctx
 // named computeBundleGas in flashbots
 func (w *worker) simulateBundle(
-	header *types.Header,
-	state *state.StateDB,
-	signer types.Signer,
-	gasPool *core.GasPool,
-	bundle *types.Bundle,
-	pendingTxs map[common.Address][]*txpool.LazyTransaction,
-	currentTxCount int,
+	env *environment, bundle *types.Bundle, state *state.StateDB, gasPool *core.GasPool,
+	pendingTxs map[common.Address][]*txpool.LazyTransaction, currentTxCount int,
 	prune, pruneGasExceed bool,
 ) (*types.SimulatedBundle, error) {
 	var (
-		bundleGasUsed uint64
-		bundleGasFees = new(big.Int)
+		tempGasUsed      uint64
+		bundleGasUsed    uint64
+		bundleGasFees    = new(big.Int)
+		ethSentToBuilder = new(big.Int)
 	)
 
 	for i, tx := range bundle.Txs {
 		state.SetTxContext(tx.Hash(), i+currentTxCount)
-		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, header, tx,
-			&bundleGasUsed, *w.chain.GetVMConfig())
+		builderBalanceBefore := state.GetBalance(w.builder)
 
+		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, env.header, tx,
+			&tempGasUsed, *w.chain.GetVMConfig())
 		if err != nil {
 			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
 
-			if !errors.Is(err, core.ErrGasLimitReached) && pruneGasExceed {
-				w.eth.TxPool().PruneBundle(bundle.Hash())
-				log.Warn("prune bundle", "hash", bundle.Hash().String())
+			if prune {
+				if errors.Is(err, core.ErrGasLimitReached) && !pruneGasExceed {
+					log.Warn("bundle gas limit exceed", "hash", bundle.Hash().String())
+				} else {
+					log.Warn("prune bundle", "hash", bundle.Hash().String(), "err", err)
+					w.eth.TxPool().PruneBundle(bundle.Hash())
+				}
 			}
 
 			return nil, err
 		}
 
 		if receipt.Status == types.ReceiptStatusFailed && !containsHash(bundle.RevertingTxHashes, receipt.TxHash) {
-			err = errUnrevertingTxInBundleFailed
+			err = errNonRevertingTxInBundleFailed
 			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
 
 			if prune {
@@ -406,12 +404,15 @@ func (w *worker) simulateBundle(
 			return nil, err
 		}
 
+		bundleGasUsed += receipt.GasUsed
+
+		builderBalanceAfter := state.GetBalance(w.builder)
+		builderDelta := new(big.Int).Sub(builderBalanceAfter, builderBalanceBefore)
+		ethSentToBuilder.Add(ethSentToBuilder, builderDelta)
+
 		var txInPendingPool bool
-
 		if pendingTxs != nil {
-			var sender common.Address
-
-			sender, err = types.Sender(signer, tx)
+			sender, err := types.Sender(env.signer, tx)
 			if err != nil {
 				log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
 				return nil, err
@@ -430,11 +431,11 @@ func (w *worker) simulateBundle(
 			}
 		}
 
-		// if tx is not in pending pool, count the gas fees
+		// If tx is not in pending pool, count the gas fees
 		if !txInPendingPool {
-			gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-			gasFees := gasUsed.Mul(gasUsed, tx.GasPrice())
-			bundleGasFees.Add(bundleGasFees, gasFees)
+			txGasUsed := new(big.Int).SetUint64(receipt.GasUsed)
+			txGasFees := new(big.Int).Mul(txGasUsed, tx.GasPrice())
+			bundleGasFees.Add(bundleGasFees, txGasFees)
 		}
 	}
 
@@ -453,10 +454,11 @@ func (w *worker) simulateBundle(
 	}
 
 	return &types.SimulatedBundle{
-		OriginalBundle: bundle,
-		BundleGasFees:  bundleGasFees,
-		BundleGasPrice: bundleGasPrice,
-		BundleGasUsed:  bundleGasUsed,
+		OriginalBundle:   bundle,
+		BundleGasFees:    bundleGasFees,
+		BundleGasPrice:   bundleGasPrice,
+		BundleGasUsed:    bundleGasUsed,
+		EthSentToBuilder: ethSentToBuilder,
 	}, nil
 }
 
