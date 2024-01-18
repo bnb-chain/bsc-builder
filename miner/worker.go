@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 	lru "github.com/hashicorp/golang-lru"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 const (
@@ -133,6 +134,9 @@ const (
 	commitInterruptResubmit
 	commitInterruptTimeout
 	commitInterruptOutOfGas
+	commitInterruptBundleTxNil
+	commitInterruptBundleTxProtected
+	commitInterruptBundleCommit
 )
 
 // newWorkReq represents a request for new sealing work submitting with relative interrupt notifier.
@@ -187,6 +191,7 @@ type worker struct {
 
 	mu       sync.RWMutex // The lock used to protect the coinbase and extra fields
 	coinbase common.Address
+	builder  common.Address
 	extra    []byte
 
 	pendingMu    sync.RWMutex
@@ -228,6 +233,15 @@ type worker struct {
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
+	var builderCoinbase common.Address
+	if config.BuilderTxSigningKey == nil {
+		log.Error("Builder tx signing key is not set")
+		builderCoinbase = config.Etherbase
+	} else {
+		builderCoinbase = crypto.PubkeyToAddress(config.BuilderTxSigningKey.PublicKey)
+	}
+
+	log.Info("new worker", "builderCoinbase", builderCoinbase.String())
 	recentMinedBlocks, _ := lru.New(recentMinedCacheLimit)
 	worker := &worker{
 		prefetcher:         core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
@@ -252,6 +266,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		recentMinedBlocks:  recentMinedBlocks,
 		bidder:             NewBidder(&config.Bidder, engine, eth.BlockChain()),
 		bundleCache:        NewBundleCache(),
+		builder:            builderCoinbase,
 	}
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
@@ -1091,7 +1106,7 @@ LOOP:
 			break LOOP
 		}
 
-		// TODO(renee) handle stop bidding
+		// TODO(roshan) handle stop bidding
 		go w.bidder.Bid(work)
 
 		if interruptCh == nil || stopTimer == nil {

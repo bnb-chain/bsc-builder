@@ -178,7 +178,8 @@ func (p *BundlePool) PruneBundle(hash common.Hash) {
 }
 
 func (p *BundlePool) PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle {
-	var ret []*types.Bundle
+	ret := make([]*types.Bundle, 0)
+
 	for hash, bundle := range p.bundles {
 		// Prune outdated bundles
 		if (bundle.MaxTimestamp != 0 && blockTimestamp > bundle.MaxTimestamp) ||

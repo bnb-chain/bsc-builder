@@ -7,7 +7,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
-// TODO(renee) refer to validator for all not in miner
+// TODO(roshan) refer to validator for all not in miner
 
 // Bid represents a bid.
 type Bid struct {

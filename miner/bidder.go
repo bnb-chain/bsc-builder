@@ -109,7 +109,7 @@ func (b *bidder) Bid(work *environment) {
 	}
 
 	// if the work is not better than the current best work, ignore it
-	if !b.winBestWork(work) {
+	if !b.isBestWork(work) {
 		return
 	}
 
@@ -157,7 +157,7 @@ func (b *bidder) bid(work *environment) {
 			ParentHash:  parent.Hash(),
 			GasUsed:     work.header.GasUsed,
 			GasFee:      work.blockReward.Uint64(),
-			// TODO(renee) decide builderFee according to realtime traffic and validator commission
+			// TODO(roshan) decide builderFee according to realtime traffic and validator commission
 			BuilderFee: big.NewInt(int64(float64(work.bundleProfit.Uint64() * 5 / 100))),
 			Txs:        txs,
 			Timestamp:  time.Now().Unix(),
@@ -189,8 +189,12 @@ func (b *bidder) bid(work *environment) {
 	return
 }
 
-// winBestWork returns the work is better than the current best work
-func (b *bidder) winBestWork(work *environment) bool {
+// isBestWork returns the work is better than the current best work
+func (b *bidder) isBestWork(work *environment) bool {
+	if work.blockReward == nil {
+		return false
+	}
+
 	return b.getBestWork(work.header.Number.Int64()).blockReward.Cmp(work.blockReward) < 0
 }
 

@@ -952,7 +952,7 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	}
 
 	// Set the correct difficulty
-	// TODO(renee) p.val -> header.coinbase ?
+	// TODO(roshan) p.val -> header.coinbase ?
 	header.Difficulty = CalcDifficulty(snap, p.val)
 
 	// Ensure the extra data has all it's components

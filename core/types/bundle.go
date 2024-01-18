@@ -23,13 +23,12 @@ type Bundle struct {
 }
 
 type SimulatedBundle struct {
-	// TODO(renee) not export
+	OriginalBundle *Bundle
 
-	MevGasPrice       *big.Int
-	TotalEth          *big.Int
-	EthSentToCoinbase *big.Int
-	TotalGasUsed      uint64
-	OriginalBundle    Bundle
+	BundleGasFees    *big.Int
+	BundleGasPrice   *big.Int
+	BundleGasUsed    uint64
+	EthSentToBuilder *big.Int
 }
 
 func (bundle *Bundle) Size() uint64 {

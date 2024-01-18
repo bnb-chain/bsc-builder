@@ -68,7 +68,7 @@ func (c *BundleCacheEntry) GetSimulatedBundle(bundle common.Hash) (*types.Simula
 	return nil, false
 }
 
-func (c *BundleCacheEntry) UpdateSimulatedBundles(result []*types.SimulatedBundle, bundles []types.Bundle) {
+func (c *BundleCacheEntry) UpdateSimulatedBundles(result []*types.SimulatedBundle, bundles []*types.Bundle) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
