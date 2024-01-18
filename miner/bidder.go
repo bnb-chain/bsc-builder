@@ -157,7 +157,7 @@ func (b *bidder) bid(work *environment) {
 			ParentHash:  parent.Hash(),
 			GasUsed:     work.header.GasUsed,
 			GasFee:      work.blockReward.Uint64(),
-			// TODO(renee) decide builderFee according to realtime traffic and validator commission
+			// TODO(roshan) decide builderFee according to realtime traffic and validator commission
 			BuilderFee: big.NewInt(int64(float64(work.bundleProfit.Uint64() * 5 / 100))),
 			Txs:        txs,
 			Timestamp:  time.Now().Unix(),

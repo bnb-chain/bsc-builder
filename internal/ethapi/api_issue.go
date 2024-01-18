@@ -26,8 +26,8 @@ type IssueArgs struct {
 func (s *IssueAPI) ReportIssue(ctx context.Context, args IssueArgs) error {
 	log.Error("received issue", "bidHash", args.BidHash, "message", args.Message)
 
-	// TODO(renee) consider not send bids to the validator for a while.
-	// TODO(renee) track slash from validators in bidder.
+	// TODO(roshan) consider not send bids to the validator for a while.
+	// TODO(roshan) track slash from validators in bidder.
 
 	return nil
 }

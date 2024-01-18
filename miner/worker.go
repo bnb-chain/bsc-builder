@@ -1094,7 +1094,7 @@ LOOP:
 			break LOOP
 		}
 
-		// TODO(renee) handle stop bidding
+		// TODO(roshan) handle stop bidding
 		go w.bidder.Bid(work)
 
 		if interruptCh == nil || stopTimer == nil {
