@@ -18,7 +18,7 @@ import (
 
 var (
 	errUnrevertingTxInBundleFailed = errors.New("unreverting tx in bundle failed")
-	errBundlePriceTooLow           = errors.New("simulateBundle price too low")
+	errBundlePriceTooLow           = errors.New("bundle price too low")
 )
 
 // commitWorkV2
