@@ -25,10 +25,10 @@ type Bundle struct {
 type SimulatedBundle struct {
 	OriginalBundle *Bundle
 
-	BundleGasFees    *big.Int
-	BundleGasPrice   *big.Int
-	BundleGasUsed    uint64
-	EthSentToBuilder *big.Int
+	BundleGasFees   *big.Int
+	BundleGasPrice  *big.Int
+	BundleGasUsed   uint64
+	EthSentToSystem *big.Int
 }
 
 func (bundle *Bundle) Size() uint64 {

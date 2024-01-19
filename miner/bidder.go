@@ -3,13 +3,11 @@ package miner
 import (
 	"context"
 	"crypto/tls"
-	"math/big"
+	"fmt"
 	"net"
 	"net/http"
 	"sync"
 	"time"
-
-	jsoniter "github.com/json-iterator/go"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -18,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -51,7 +50,7 @@ type BidderConfig struct {
 	Validators []ValidatorConfig
 }
 
-type bidder struct {
+type Bidder struct {
 	config *BidderConfig
 	engine consensus.Engine
 	chain  *core.BlockChain
@@ -62,8 +61,8 @@ type bidder struct {
 	bestWorks   map[int64]*environment
 }
 
-func NewBidder(config *BidderConfig, engine consensus.Engine, chain *core.BlockChain) *bidder {
-	b := &bidder{
+func NewBidder(config *BidderConfig, engine consensus.Engine, chain *core.BlockChain) *Bidder {
+	b := &Bidder{
 		config:     config,
 		engine:     engine,
 		chain:      chain,
@@ -97,7 +96,7 @@ func NewBidder(config *BidderConfig, engine consensus.Engine, chain *core.BlockC
 // 2. panic if no valid validators
 // 3. ignore and return if the work is not better than the current best work
 // 4. update the bestWork and do bid
-func (b *bidder) Bid(work *environment) {
+func (b *Bidder) Bid(work *environment) {
 	if !b.config.Enable {
 		log.Warn("Bidder: disabled")
 		return
@@ -118,15 +117,36 @@ func (b *bidder) Bid(work *environment) {
 	b.bid(work)
 }
 
-func (b *bidder) registered(validator common.Address) bool {
+func (b *Bidder) registered(validator common.Address) bool {
 	_, ok := b.validators[validator]
 	return ok
+}
+
+func (b *Bidder) register(validator common.Address, url string) error {
+	if _, ok := b.validators[validator]; ok {
+		return fmt.Errorf("validator %s already registered", validator.String())
+	}
+
+	cl, err := ethclient.DialOptions(context.Background(), url, rpc.WithHTTPClient(client))
+	if err != nil {
+		log.Error("Bidder: failed to dial validator", "url", url, "err", err)
+		return err
+	}
+
+	b.validators[validator] = cl
+	return nil
+}
+
+func (b *Bidder) unregister(validator common.Address) {
+	if _, ok := b.validators[validator]; ok {
+		delete(b.validators, validator)
+	}
 }
 
 // bid notifies the next in-turn validator the work
 // 1. compute the return profit for builder based on realtime traffic and validator commission
 // 2. send bid to validator
-func (b *bidder) bid(work *environment) {
+func (b *Bidder) bid(work *environment) {
 	var (
 		cli     = b.validators[work.coinbase]
 		parent  = b.chain.CurrentBlock()
@@ -157,16 +177,12 @@ func (b *bidder) bid(work *environment) {
 			ParentHash:  parent.Hash(),
 			GasUsed:     work.header.GasUsed,
 			GasFee:      work.blockReward.Uint64(),
-			// TODO(roshan) decide builderFee according to realtime traffic and validator commission
-			BuilderFee: big.NewInt(int64(float64(work.bundleProfit.Uint64() * 5 / 100))),
-			Txs:        txs,
-			Timestamp:  time.Now().Unix(),
+			Txs:         txs,
+			Timestamp:   time.Now().Unix(),
 		}
 
-		// TODO(roshan) review sign
-		data, _ := jsoniter.Marshal(bid)
+		data, _ := rlp.EncodeToBytes(bid)
 		signature, err := b.engine.SealData(data)
-
 		if err != nil {
 			log.Error("Bidder: fail to sign bid", "err", err)
 			return
@@ -190,16 +206,16 @@ func (b *bidder) bid(work *environment) {
 }
 
 // isBestWork returns the work is better than the current best work
-func (b *bidder) isBestWork(work *environment) bool {
-	if work.blockReward == nil {
+func (b *Bidder) isBestWork(work *environment) bool {
+	if work.bundleProfit == nil {
 		return false
 	}
 
-	return b.getBestWork(work.header.Number.Int64()).blockReward.Cmp(work.blockReward) < 0
+	return b.getBestWork(work.header.Number.Int64()).bundleProfit.Cmp(work.bundleProfit) < 0
 }
 
 // setBestWork sets the best work
-func (b *bidder) setBestWork(work *environment) {
+func (b *Bidder) setBestWork(work *environment) {
 	b.bestWorksMu.Lock()
 	defer b.bestWorksMu.Unlock()
 
@@ -207,7 +223,7 @@ func (b *bidder) setBestWork(work *environment) {
 }
 
 // getBestWork returns the best work
-func (b *bidder) getBestWork(blockNumber int64) *environment {
+func (b *Bidder) getBestWork(blockNumber int64) *environment {
 	b.bestWorksMu.RLock()
 	defer b.bestWorksMu.RUnlock()
 
