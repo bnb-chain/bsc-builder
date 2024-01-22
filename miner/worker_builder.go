@@ -71,7 +71,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 			return err
 		}
 
-		env.bundleProfit.Add(env.bundleProfit, bundle.EthSentToSystem)
+		env.profit.Add(env.profit, bundle.EthSentToSystem)
 	}
 
 	if len(localTxs) > 0 {

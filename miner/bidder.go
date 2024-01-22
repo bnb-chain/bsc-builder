@@ -179,6 +179,7 @@ func (b *Bidder) bid(work *environment) {
 			GasFee:      work.blockReward.Uint64(),
 			Txs:         txs,
 			Timestamp:   time.Now().Unix(),
+			// TODO: decide builderFee according to realtime traffic and validator commission
 		}
 
 		data, _ := rlp.EncodeToBytes(bid)
@@ -207,11 +208,11 @@ func (b *Bidder) bid(work *environment) {
 
 // isBestWork returns the work is better than the current best work
 func (b *Bidder) isBestWork(work *environment) bool {
-	if work.bundleProfit == nil {
+	if work.profit == nil {
 		return false
 	}
 
-	return b.getBestWork(work.header.Number.Int64()).bundleProfit.Cmp(work.bundleProfit) < 0
+	return b.getBestWork(work.header.Number.Int64()).profit.Cmp(work.profit) < 0
 }
 
 // setBestWork sets the best work

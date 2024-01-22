@@ -87,8 +87,8 @@ type environment struct {
 	txs      []*types.Transaction
 	receipts []*types.Receipt
 
-	blockReward  *big.Int
-	bundleProfit *big.Int
+	blockReward *big.Int // block gas fee
+	profit      *big.Int // block gas fee + BNBSentToSystem
 }
 
 // copy creates a deep copy of environment.
@@ -715,7 +715,7 @@ func (w *worker) commitTransaction(env *environment, tx *txpool.Transaction, rec
 	env.receipts = append(env.receipts, receipt)
 
 	gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-	env.bundleProfit.Add(env.bundleProfit, gasUsed.Mul(gasUsed, tx.Tx.GasPrice()))
+	env.profit.Add(env.profit, gasUsed.Mul(gasUsed, tx.Tx.GasPrice()))
 	env.blockReward.Add(env.blockReward, gasUsed.Mul(gasUsed, tx.Tx.GasPrice()))
 
 	return receipt.Logs, nil
