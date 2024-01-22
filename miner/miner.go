@@ -34,10 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	"crypto/ecdsa"
-	"github.com/ethereum/go-ethereum/crypto"
-	"strings"
-	"os"
 )
 
 // Backend wraps all methods required for mining. Only full node is capable
@@ -58,8 +54,7 @@ type Config struct {
 	Recommit      time.Duration  // The time interval for miner to re-create mining work.
 	VoteEnable    bool           // Whether to vote when mining
 
-	BuilderTxSigningKey *ecdsa.PrivateKey `toml:",omitempty"` // Signing key of builder coinbase to make transaction to validator
-	MevGasPriceFloor    int64             `toml:",omitempty"`
+	MevGasPriceFloor int64 `toml:",omitempty"`
 
 	NewPayloadTimeout      time.Duration // The maximum time allowance for creating a new payload
 	DisableVoteAttestation bool          // Whether to skip assembling vote attestation
@@ -95,15 +90,6 @@ type Miner struct {
 }
 
 func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine, isLocalBlock func(header *types.Header) bool) *Miner {
-	if config.BuilderTxSigningKey == nil {
-		key := os.Getenv("BUILDER_TX_SIGNING_KEY")
-		if key, err := crypto.HexToECDSA(strings.TrimPrefix(key, "0x")); err != nil {
-			log.Error("Error parsing builder signing key from env", "err", err)
-		} else {
-			config.BuilderTxSigningKey = key
-		}
-	}
-
 	miner := &Miner{
 		mux:     mux,
 		eth:     eth,
@@ -303,16 +289,12 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 		GasLimit:   core.CalcGasLimit(parent.GasLimit, miner.worker.config.GasCeil),
 		Extra:      miner.worker.extra,
 		Time:       uint64(timestamp),
+		Coinbase:   miner.worker.etherbase(),
 	}
-
-	header.Coinbase = miner.worker.etherbase()
 
 	if err := miner.worker.engine.Prepare(miner.eth.BlockChain(), header); err != nil {
 		return nil, err
 	}
-
-	gasPool := new(core.GasPool).AddGas(header.GasLimit)
-	gasPool.SubGas(params.SystemTxsGas)
 
 	state, err := miner.eth.BlockChain().StateAt(parent.Root)
 	if err != nil {
@@ -330,4 +312,18 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 		return nil, err
 	}
 	return s[0].BundleGasPrice, nil
+}
+
+func (miner *Miner) RegisterMevValidator(validator common.Address, url string) error {
+	if miner.worker.bidder != nil {
+		return miner.worker.bidder.register(validator, url)
+	}
+
+	return fmt.Errorf("bidder is nil")
+}
+
+func (miner *Miner) UnregisterMevValidator(validator common.Address) {
+	if miner.worker.bidder != nil {
+		miner.worker.bidder.unregister(validator)
+	}
 }

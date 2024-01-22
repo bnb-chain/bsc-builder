@@ -212,6 +212,8 @@ func (b *LesApiBackend) BundlePrice() *big.Int {
 	return nil
 }
 
+func (b *LesApiBackend) UnregisterMevValidator(validator common.Address) {}
+
 func (b *LesApiBackend) RemoveTx(txHash common.Hash) {
 	b.eth.txPool.RemoveTx(txHash)
 }

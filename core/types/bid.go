@@ -2,6 +2,7 @@ package types
 
 import (
 	"math/big"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -18,6 +19,21 @@ type Bid struct {
 	GasFee      uint64          `json:"gasFee"`
 	Timestamp   int64           `json:"timestamp"`
 	BuilderFee  *big.Int        `json:"builderFee"`
+
+	// caches
+	hash atomic.Value
+}
+
+func (b *Bid) Hash() common.Hash {
+	if hash := b.hash.Load(); hash != nil {
+		return hash.(common.Hash)
+	}
+
+	var h common.Hash
+	h = rlpHash(b)
+
+	b.hash.Store(h)
+	return h
 }
 
 // BidArgs represents the arguments to submit a bid.

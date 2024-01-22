@@ -159,8 +159,10 @@ var (
 
 // SignerFn is a signer callback function to request a header to be signed by a
 // backing account.
-type SignerFn func(accounts.Account, string, []byte) ([]byte, error)
-type SignerTxFn func(accounts.Account, *types.Transaction, *big.Int) (*types.Transaction, error)
+type (
+	SignerFn   func(accounts.Account, string, []byte) ([]byte, error)
+	SignerTxFn func(accounts.Account, *types.Transaction, *big.Int) (*types.Transaction, error)
+)
 
 func isToSystemContract(to common.Address) bool {
 	return systemContracts[to]
@@ -904,7 +906,7 @@ func (p *Parlia) assembleVoteAttestation(chain consensus.ChainHeaderReader, head
 	// Prepare vote address bitset.
 	for _, valInfo := range snap.Validators {
 		if _, ok := voteAddrSet[valInfo.VoteAddress]; ok {
-			attestation.VoteAddressSet |= 1 << (valInfo.Index - 1) //Index is offset by 1
+			attestation.VoteAddressSet |= 1 << (valInfo.Index - 1) // Index is offset by 1
 		}
 	}
 	validatorsBitSet := bitset.From([]uint64{uint64(attestation.VoteAddressSet)})
@@ -942,7 +944,6 @@ func (p *Parlia) NextInTurnValidator(chain consensus.ChainHeaderReader, header *
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
-	header.Coinbase = p.val
 	header.Nonce = types.BlockNonce{}
 
 	number := header.Number.Uint64()
@@ -952,8 +953,7 @@ func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header
 	}
 
 	// Set the correct difficulty
-	// TODO(roshan) p.val -> header.coinbase ?
-	header.Difficulty = CalcDifficulty(snap, p.val)
+	header.Difficulty = CalcDifficulty(snap, header.Coinbase)
 
 	// Ensure the extra data has all it's components
 	if len(header.Extra) < extraVanity-nextForkHashSize {

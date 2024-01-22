@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -28,7 +29,6 @@ func (w *worker) commitWorkV2(interruptCh chan int32, timestamp int64) {
 
 // fillTransactions retrieves the pending bundles and transactions from the txpool and fills them
 // into the given sealing block. The selection and ordering strategy can be extended in the future.
-// TODO(roshan) extend fill strategy
 func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environment, stopTimer *time.Timer) error {
 	var (
 		pending   map[common.Address][]*txpool.LazyTransaction
@@ -60,7 +60,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 	}
 
 	{
-		txs, _, err := w.generateOrderedBundles(env, bundles, pending)
+		txs, bundle, err := w.generateOrderedBundles(env, bundles, pending)
 		if err != nil {
 			log.Error("fail to generate ordered bundles", "err", err)
 			return err
@@ -71,9 +71,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 			return err
 		}
 
-		// TODO(roshan) compute this
-		var bundleReward *big.Int
-		env.bundleProfit.Add(env.bundleProfit, bundleReward)
+		env.profit.Add(env.profit, bundle.EthSentToSystem)
 	}
 
 	if len(localTxs) > 0 {
@@ -91,10 +89,6 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 			return err
 		}
 	}
-
-	// TODO(roshan) compute this
-	var blockReward *big.Int
-	env.blockReward.Add(env.blockReward, blockReward)
 
 	return nil
 }
@@ -244,7 +238,6 @@ func (w *worker) generateOrderedBundles(
 	})
 
 	// merge bundles based on iterative state
-	// TODO(roshan) review here, if mergeBundles can be cancelled, directly commitBundles
 	includedTxs, mergedBundle, err := w.mergeBundles(env, simulatedBundles, pendingTxs)
 	if err != nil {
 		log.Error("fail to merge bundles", "err", err)
@@ -365,15 +358,15 @@ func (w *worker) simulateBundle(
 	prune, pruneGasExceed bool,
 ) (*types.SimulatedBundle, error) {
 	var (
-		tempGasUsed      uint64
-		bundleGasUsed    uint64
-		bundleGasFees    = new(big.Int)
-		ethSentToBuilder = new(big.Int)
+		tempGasUsed     uint64
+		bundleGasUsed   uint64
+		bundleGasFees   = new(big.Int)
+		ethSentToSystem = new(big.Int)
 	)
 
 	for i, tx := range bundle.Txs {
 		state.SetTxContext(tx.Hash(), i+currentTxCount)
-		builderBalanceBefore := state.GetBalance(w.builder)
+		sysBalanceBefore := state.GetBalance(consensus.SystemAddress)
 
 		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, env.header, tx,
 			&tempGasUsed, *w.chain.GetVMConfig())
@@ -406,9 +399,12 @@ func (w *worker) simulateBundle(
 
 		bundleGasUsed += receipt.GasUsed
 
-		builderBalanceAfter := state.GetBalance(w.builder)
-		builderDelta := new(big.Int).Sub(builderBalanceAfter, builderBalanceBefore)
-		ethSentToBuilder.Add(ethSentToBuilder, builderDelta)
+		txGasUsed := new(big.Int).SetUint64(receipt.GasUsed)
+		txGasFees := new(big.Int).Mul(txGasUsed, tx.GasPrice())
+		sysBalanceAfter := state.GetBalance(consensus.SystemAddress)
+		sysDelta := new(big.Int).Sub(sysBalanceAfter, sysBalanceBefore)
+		sysDelta.Sub(sysDelta, txGasFees)
+		ethSentToSystem.Add(ethSentToSystem, sysDelta)
 
 		var txInPendingPool bool
 		if pendingTxs != nil {
@@ -433,8 +429,6 @@ func (w *worker) simulateBundle(
 
 		// If tx is not in pending pool, count the gas fees
 		if !txInPendingPool {
-			txGasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-			txGasFees := new(big.Int).Mul(txGasUsed, tx.GasPrice())
 			bundleGasFees.Add(bundleGasFees, txGasFees)
 		}
 	}
@@ -454,11 +448,11 @@ func (w *worker) simulateBundle(
 	}
 
 	return &types.SimulatedBundle{
-		OriginalBundle:   bundle,
-		BundleGasFees:    bundleGasFees,
-		BundleGasPrice:   bundleGasPrice,
-		BundleGasUsed:    bundleGasUsed,
-		EthSentToBuilder: ethSentToBuilder,
+		OriginalBundle:  bundle,
+		BundleGasFees:   bundleGasFees,
+		BundleGasPrice:  bundleGasPrice,
+		BundleGasUsed:   bundleGasUsed,
+		EthSentToSystem: ethSentToSystem,
 	}, nil
 }
 

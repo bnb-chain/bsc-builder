@@ -306,9 +306,6 @@ func (b *EthAPIBackend) MinimalBundleGasPrice() *big.Int {
 
 func (b *EthAPIBackend) BundlePrice() *big.Int {
 	bundles := b.eth.txPool.AllBundles()
-	if len(bundles) < b.eth.config.Miner.MaxSimulateBundles/2 {
-		return big.NewInt(b.eth.config.Miner.MevGasPriceFloor)
-	}
 
 	sort.SliceStable(bundles, func(i, j int) bool {
 		return bundles[j].Price.Cmp(bundles[i].Price) < 0
@@ -321,6 +318,10 @@ func (b *EthAPIBackend) BundlePrice() *big.Int {
 	}
 
 	return bundles[idx].Price
+}
+
+func (b *EthAPIBackend) UnregisterMevValidator(validator common.Address) {
+	b.eth.miner.UnregisterMevValidator(validator)
 }
 
 func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {

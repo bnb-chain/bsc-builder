@@ -24,6 +24,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	lru "github.com/hashicorp/golang-lru"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
@@ -37,8 +39,6 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
-	lru "github.com/hashicorp/golang-lru"
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 const (
@@ -87,8 +87,8 @@ type environment struct {
 	txs      []*types.Transaction
 	receipts []*types.Receipt
 
-	blockReward  *big.Int
-	bundleProfit *big.Int
+	blockReward *big.Int // block gas fee
+	profit      *big.Int // block gas fee + BNBSentToSystem
 }
 
 // copy creates a deep copy of environment.
@@ -184,6 +184,7 @@ type worker struct {
 	startCh            chan struct{}
 	exitCh             chan struct{}
 	resubmitIntervalCh chan time.Duration
+	bidCh              chan *environment
 
 	wg sync.WaitGroup
 
@@ -191,7 +192,6 @@ type worker struct {
 
 	mu       sync.RWMutex // The lock used to protect the coinbase and extra fields
 	coinbase common.Address
-	builder  common.Address
 	extra    []byte
 
 	pendingMu    sync.RWMutex
@@ -228,20 +228,11 @@ type worker struct {
 	recentMinedBlocks *lru.Cache
 
 	// MEV
-	bidder      *bidder
+	bidder      *Bidder
 	bundleCache *BundleCache
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
-	var builderCoinbase common.Address
-	if config.BuilderTxSigningKey == nil {
-		log.Error("Builder tx signing key is not set")
-		builderCoinbase = config.Etherbase
-	} else {
-		builderCoinbase = crypto.PubkeyToAddress(config.BuilderTxSigningKey.PublicKey)
-	}
-
-	log.Info("new worker", "builderCoinbase", builderCoinbase.String())
 	recentMinedBlocks, _ := lru.New(recentMinedCacheLimit)
 	worker := &worker{
 		prefetcher:         core.NewStatePrefetcher(chainConfig, eth.BlockChain(), engine),
@@ -266,7 +257,6 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		recentMinedBlocks:  recentMinedBlocks,
 		bidder:             NewBidder(&config.Bidder, engine, eth.BlockChain()),
 		bundleCache:        NewBundleCache(),
-		builder:            builderCoinbase,
 	}
 	// Subscribe events for blockchain
 	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
@@ -500,6 +490,9 @@ func (w *worker) mainLoop() {
 				fees:  fees,
 			}
 
+		case work := <-w.bidCh:
+			w.bidder.Bid(work)
+
 		// System stopped
 		case <-w.exitCh:
 			return
@@ -663,7 +656,8 @@ func (w *worker) resultLoop() {
 
 // makeEnv creates a new environment for the sealing block.
 func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase common.Address,
-	prevEnv *environment) (*environment, error) {
+	prevEnv *environment,
+) (*environment, error) {
 	// Retrieve the parent state to execute on top and start a prefetcher for
 	// the miner to speed block sealing up a bit
 	state, err := w.chain.StateAtWithSharedPool(parent.Root)
@@ -716,14 +710,20 @@ func (w *worker) commitTransaction(env *environment, tx *txpool.Transaction, rec
 		env.gasPool.SetGas(gp)
 		return nil, err
 	}
+
 	env.txs = append(env.txs, tx.Tx)
 	env.receipts = append(env.receipts, receipt)
+
+	gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
+	env.profit.Add(env.profit, gasUsed.Mul(gasUsed, tx.Tx.GasPrice()))
+	env.blockReward.Add(env.blockReward, gasUsed.Mul(gasUsed, tx.Tx.GasPrice()))
 
 	return receipt.Logs, nil
 }
 
 func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAndNonce,
-	interruptCh chan int32, stopTimer *time.Timer) error {
+	interruptCh chan int32, stopTimer *time.Timer,
+) error {
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
@@ -1106,8 +1106,7 @@ LOOP:
 			break LOOP
 		}
 
-		// TODO(roshan) handle stop bidding
-		go w.bidder.Bid(work)
+		w.bidCh <- work
 
 		if interruptCh == nil || stopTimer == nil {
 			// it is single commit work, no need to try several time.

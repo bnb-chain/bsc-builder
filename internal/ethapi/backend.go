@@ -80,6 +80,7 @@ type Backend interface {
 	SendBundle(ctx context.Context, bundle *types.Bundle) error
 	MinimalBundleGasPrice() *big.Int
 	BundlePrice() *big.Int
+	UnregisterMevValidator(validator common.Address)
 	GetTransaction(ctx context.Context, txHash common.Hash) (*types.Transaction, common.Hash, uint64, uint64, error)
 	GetPoolTransactions() (types.Transactions, error)
 	GetPoolTransaction(txHash common.Hash) *types.Transaction
