@@ -124,9 +124,6 @@ type Engine interface {
 	// SealHash returns the hash of a block prior to it being sealed.
 	SealHash(header *types.Header) common.Hash
 
-	// SealData signs keccak256(data)
-	SealData(data []byte) ([]byte, error)
-
 	// CalcDifficulty is the difficulty adjustment algorithm. It returns the difficulty
 	// that a new block should have.
 	CalcDifficulty(chain ChainHeaderReader, time uint64, parent *types.Header) *big.Int
@@ -160,4 +157,5 @@ type PoSA interface {
 	GetFinalizedHeader(chain ChainHeaderReader, header *types.Header) *types.Header
 	VerifyVote(chain ChainHeaderReader, vote *types.VoteEnvelope) error
 	IsActiveValidatorAt(chain ChainHeaderReader, header *types.Header, checkVoteKeyFn func(bLSPublicKey *types.BLSPublicKey) bool) bool
+	SetValidator(validator common.Address)
 }

@@ -74,6 +74,8 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 		env.profit.Add(env.profit, bundle.EthSentToSystem)
 	}
 
+	env.state.StopPrefetcher() // no need to prefetch txs for a builder
+
 	if len(localTxs) > 0 {
 		txs := newTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
 		err := w.commitTransactions(env, txs, interruptCh, stopTimer)

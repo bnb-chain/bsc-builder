@@ -17,7 +17,6 @@ type Bid struct {
 	Txs         []hexutil.Bytes `json:"txs,omitempty"`
 	GasUsed     uint64          `json:"gasUsed"`
 	GasFee      uint64          `json:"gasFee"`
-	Timestamp   int64           `json:"timestamp"`
 	BuilderFee  *big.Int        `json:"builderFee"`
 
 	// caches

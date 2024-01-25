@@ -944,6 +944,7 @@ func (p *Parlia) NextInTurnValidator(chain consensus.ChainHeaderReader, header *
 // Prepare implements consensus.Engine, preparing all the consensus fields of the
 // header for running the transactions on top.
 func (p *Parlia) Prepare(chain consensus.ChainHeaderReader, header *types.Header) error {
+	header.Coinbase = p.val
 	header.Nonce = types.BlockNonce{}
 
 	number := header.Number.Uint64()
@@ -1436,22 +1437,6 @@ func (p *Parlia) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	return nil
 }
 
-// SealData signs keccak256(data)
-func (p *Parlia) SealData(data []byte) ([]byte, error) {
-	// Don't hold the val fields for the entire sealing procedure
-	p.lock.RLock()
-	val, signFn := p.val, p.signFn
-	p.lock.RUnlock()
-
-	sig, err := signFn(accounts.Account{Address: val}, accounts.MimetypeTextPlain, data)
-	if err != nil {
-		log.Error("Sign for the block header failed when sealing", "err", err)
-		return nil, err
-	}
-
-	return sig, nil
-}
-
 func (p *Parlia) shouldWaitForCurrentBlockProcess(chain consensus.ChainHeaderReader, header *types.Header, snap *Snapshot) bool {
 	if header.Difficulty.Cmp(diffInTurn) == 0 {
 		return false
@@ -1820,6 +1805,17 @@ func (p *Parlia) GetFinalizedHeader(chain consensus.ChainHeaderReader, header *t
 	}
 
 	return chain.GetHeader(snap.Attestation.SourceHash, snap.Attestation.SourceNumber)
+}
+
+// SetValidator set the validator of parlia engine
+// It is used for builder
+func (p *Parlia) SetValidator(val common.Address) {
+	if val == (common.Address{}) {
+		return
+	}
+	p.lock.Lock()
+	defer p.lock.Unlock()
+	p.val = val
 }
 
 // ===========================     utility function        ==========================

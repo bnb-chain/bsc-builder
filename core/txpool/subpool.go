@@ -139,7 +139,9 @@ type SubPool interface {
 	// Status returns the known status (unknown/pending/queued) of a transaction
 	// identified by their hashes.
 	Status(hash common.Hash) TxStatus
+}
 
+type BundleSubpool interface {
 	// FilterBundle is a selector used to decide whether a bundle would be added
 	// to this particular subpool.
 	FilterBundle(bundle *types.Bundle) bool

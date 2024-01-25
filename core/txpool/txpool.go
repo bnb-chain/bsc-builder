@@ -311,8 +311,10 @@ func (p *TxPool) Add(txs []*Transaction, local bool, sync bool) []error {
 func (p *TxPool) AddBundle(bundle *types.Bundle) error {
 	// Try to find a sub pool that accepts the bundle
 	for _, subpool := range p.subpools {
-		if subpool.FilterBundle(bundle) {
-			return subpool.AddBundle(bundle)
+		if bundleSubpool, ok := subpool.(BundleSubpool); ok {
+			if bundleSubpool.FilterBundle(bundle) {
+				return bundleSubpool.AddBundle(bundle)
+			}
 		}
 	}
 	return errors.New("no subpool accepts the bundle")
@@ -321,7 +323,10 @@ func (p *TxPool) AddBundle(bundle *types.Bundle) error {
 // PruneBundle removes a bundle from the pool.
 func (p *TxPool) PruneBundle(hash common.Hash) {
 	for _, subpool := range p.subpools {
-		subpool.PruneBundle(hash)
+		if bundleSubpool, ok := subpool.(BundleSubpool); ok {
+			bundleSubpool.PruneBundle(hash)
+			return // Only one subpool can have the bundle
+		}
 	}
 }
 
@@ -357,20 +362,22 @@ func (p *TxPool) Pending(enforceTips bool) map[common.Address][]*LazyTransaction
 
 // PendingBundles retrieves all currently processable bundles.
 func (p *TxPool) PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle {
-	bundles := make([]*types.Bundle, 0)
 	for _, subpool := range p.subpools {
-		bundles = append(bundles, subpool.PendingBundles(blockNumber, blockTimestamp)...)
+		if bundleSubpool, ok := subpool.(BundleSubpool); ok {
+			return bundleSubpool.PendingBundles(blockNumber, blockTimestamp)
+		}
 	}
-	return bundles
+	return nil
 }
 
 // AllBundles returns all the bundles currently in the pool
 func (p *TxPool) AllBundles() []*types.Bundle {
-	bundles := make([]*types.Bundle, 0)
 	for _, subpool := range p.subpools {
-		bundles = append(bundles, subpool.AllBundles()...)
+		if bundleSubpool, ok := subpool.(BundleSubpool); ok {
+			return bundleSubpool.AllBundles()
+		}
 	}
-	return bundles
+	return nil
 }
 
 // SubscribeNewTxsEvent registers a subscription of NewTxsEvent and starts sending

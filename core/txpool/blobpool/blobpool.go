@@ -1540,19 +1540,3 @@ func (p *BlobPool) Status(hash common.Hash) txpool.TxStatus {
 	}
 	return txpool.TxStatusUnknown
 }
-
-func (p *BlobPool) FilterBundle(bundle *types.Bundle) bool {
-	panic("not supported")
-}
-
-func (p *BlobPool) AddBundle(bundle *types.Bundle) error {
-	panic("not supported")
-}
-
-func (p *BlobPool) PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle {
-	panic("not supported")
-}
-
-func (p *BlobPool) AllBundles() []*types.Bundle {
-	panic("not supported")
-}

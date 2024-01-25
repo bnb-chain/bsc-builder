@@ -284,7 +284,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
 	// if not builder
-	{
+	if !worker.bidder.isEnabled() {
 		worker.wg.Add(2)
 		go worker.resultLoop()
 		go worker.taskLoop()
@@ -1007,24 +1007,35 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 	// Set the coinbase if the worker is running or it's required
 	var coinbase common.Address
 	if w.isRunning() {
-		var err error
+		if w.bidder.isEnabled() {
+			var err error
+			// take the next in-turn validator as coinbase
+			coinbase, err = w.engine.NextInTurnValidator(w.chain, w.chain.CurrentBlock())
+			if err != nil {
+				log.Error("Failed to get next in-turn validator", "err", err)
+				return
+			}
 
-		// take the next in-turn validator as coinbase
-		coinbase, err = w.engine.NextInTurnValidator(w.chain, w.chain.CurrentBlock())
-		if err != nil {
-			log.Error("Failed to get next in-turn validator", "err", err)
-			return
-		}
-		if coinbase == (common.Address{}) {
-			log.Error("Refusing to mine without etherbase")
-			return
-		}
-	}
+			// do not build work if not register to the coinbase
+			if !w.bidder.registered(coinbase) {
+				log.Warn("Refusing to mine with unregistered validator")
+				return
+			}
 
-	// do not build work if not register to the coinbase
-	if !w.bidder.registered(coinbase) {
-		log.Warn("Refusing to mine with unregistered validator")
-		return
+			// set validator to the consensus engine
+			if posa, ok := w.engine.(consensus.PoSA); ok {
+				posa.SetValidator(coinbase)
+			} else {
+				log.Warn("Consensus engine does not support validator setting")
+				return
+			}
+		} else {
+			coinbase = w.etherbase()
+			if coinbase == (common.Address{}) {
+				log.Error("Refusing to mine without etherbase")
+				return
+			}
+		}
 	}
 
 	stopTimer := time.NewTimer(0)

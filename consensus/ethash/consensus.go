@@ -550,11 +550,6 @@ func (ethash *Ethash) SealHash(header *types.Header) (hash common.Hash) {
 	return hash
 }
 
-// SealData signs keccak256(data)
-func (ethash *Ethash) SealData(data []byte) ([]byte, error) {
-	return nil, errors.New("not implemented")
-}
-
 // Some weird constants to avoid constant memory allocs for them.
 var (
 	big8  = big.NewInt(8)

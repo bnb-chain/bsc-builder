@@ -1739,26 +1739,6 @@ func (pool *LegacyPool) demoteUnexecutables() {
 	}
 }
 
-func (pool *LegacyPool) FilterBundle(bundle *types.Bundle) bool {
-	return false
-}
-
-func (pool *LegacyPool) AddBundle(bundle *types.Bundle) error {
-	return nil
-}
-
-func (pool *LegacyPool) PendingBundles(blockNumber *big.Int, blockTimestamp uint64) []*types.Bundle {
-	return []*types.Bundle{}
-}
-
-func (pool *LegacyPool) AllBundles() []*types.Bundle {
-	return []*types.Bundle{}
-}
-
-func (pool *LegacyPool) PruneBundle(hash common.Hash) {
-	return
-}
-
 // addressByHeartbeat is an account address tagged with its last activity timestamp.
 type addressByHeartbeat struct {
 	address   common.Address

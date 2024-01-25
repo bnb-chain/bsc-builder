@@ -18,6 +18,8 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
+	"crypto/ecdsa"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var (
@@ -48,6 +50,7 @@ type ValidatorConfig struct {
 type BidderConfig struct {
 	Enable     bool
 	Validators []ValidatorConfig
+	SecretKey  string
 }
 
 type Bidder struct {
@@ -59,6 +62,8 @@ type Bidder struct {
 
 	bestWorksMu sync.RWMutex
 	bestWorks   map[int64]*environment
+
+	builderSecretKey *ecdsa.PrivateKey
 }
 
 func NewBidder(config *BidderConfig, engine consensus.Engine, chain *core.BlockChain) *Bidder {
@@ -87,6 +92,20 @@ func NewBidder(config *BidderConfig, engine consensus.Engine, chain *core.BlockC
 	if len(b.validators) == 0 {
 		log.Warn("Bidder: No valid validators")
 	}
+
+	if config.SecretKey == "" {
+		log.Error("Bidder: no secret key")
+		return b
+	}
+	if config.SecretKey[:2] == "0x" {
+		config.SecretKey = config.SecretKey[2:]
+	}
+	pk, err := crypto.HexToECDSA(config.SecretKey)
+	if err != nil {
+		log.Error("Bidder: invalid secret key", "err", err)
+		return b
+	}
+	b.builderSecretKey = pk
 
 	return b
 }
@@ -178,12 +197,10 @@ func (b *Bidder) bid(work *environment) {
 			GasUsed:     work.header.GasUsed,
 			GasFee:      work.blockReward.Uint64(),
 			Txs:         txs,
-			Timestamp:   time.Now().Unix(),
 			// TODO: decide builderFee according to realtime traffic and validator commission
 		}
 
-		data, _ := rlp.EncodeToBytes(bid)
-		signature, err := b.engine.SealData(data)
+		signature, err := b.signBid(&bid)
 		if err != nil {
 			log.Error("Bidder: fail to sign bid", "err", err)
 			return
@@ -229,4 +246,20 @@ func (b *Bidder) getBestWork(blockNumber int64) *environment {
 	defer b.bestWorksMu.RUnlock()
 
 	return b.bestWorks[blockNumber]
+}
+
+// signBid returns the best work
+func (b *Bidder) signBid(bid *types.Bid) ([]byte, error) {
+	bz, err := rlp.EncodeToBytes(bid)
+	if err != nil {
+		return nil, err
+	}
+
+	digestHash := crypto.Keccak256(bz)
+	return crypto.Sign(digestHash, b.builderSecretKey)
+}
+
+// isEnabled returns whether the bid is enabled
+func (b *Bidder) isEnabled() bool {
+	return b.config.Enable
 }

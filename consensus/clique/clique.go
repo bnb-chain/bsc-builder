@@ -706,11 +706,6 @@ func (c *Clique) SealHash(header *types.Header) common.Hash {
 	return SealHash(header)
 }
 
-// SealData signs keccak256(data)
-func (c *Clique) SealData(data []byte) ([]byte, error) {
-	return nil, errors.New("not implemented")
-}
-
 // Close implements consensus.Engine. It's a noop for clique as there are no background threads.
 func (c *Clique) Close() error {
 	return nil
