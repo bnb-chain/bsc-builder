@@ -2,6 +2,7 @@ package miner
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -14,12 +15,11 @@ import (
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
-	"crypto/ecdsa"
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var (
@@ -248,7 +248,7 @@ func (b *Bidder) getBestWork(blockNumber int64) *environment {
 	return b.bestWorks[blockNumber]
 }
 
-// signBid returns the best work
+// signBid signs the bid with builder's secret key
 func (b *Bidder) signBid(bid *types.Bid) ([]byte, error) {
 	bz, err := rlp.EncodeToBytes(bid)
 	if err != nil {
