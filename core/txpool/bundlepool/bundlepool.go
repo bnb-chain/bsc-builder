@@ -4,7 +4,6 @@ import (
 	"container/heap"
 	"math/big"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -55,7 +54,6 @@ type BundleSimulator interface {
 
 type BundlePool struct {
 	config Config
-	gasTip atomic.Pointer[big.Int] // Currently accepted minimum gas tip
 
 	bundles    map[common.Hash]*types.Bundle
 	bundleHeap BundleHeap
@@ -67,7 +65,7 @@ type BundlePool struct {
 	simulator       BundleSimulator
 }
 
-func New(config Config, chain BlockChain) *BundlePool {
+func New(config Config) *BundlePool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
 
@@ -86,18 +84,6 @@ func (p *BundlePool) SetBundleSimulator(simulator BundleSimulator) {
 }
 
 func (p *BundlePool) Init(gasTip *big.Int, head *types.Header, reserve txpool.AddressReserver) error {
-	// Set the basic pool parameters
-	p.reset(head)
-
-	// Since the user might have modified their pool's capacity, evict anything
-	// above the current allowance
-	for p.slots > p.config.GlobalSlots {
-		p.drop()
-	}
-
-	bundleGauge.Update(int64(len(p.bundles)))
-	slotsGauge.Update(int64(p.slots))
-
 	return nil
 }
 
@@ -121,7 +107,7 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 		return err
 	}
 	minimalGasPrice := p.bundleGasPricer.MinimalBundleGasPrice()
-	if price.Cmp(minimalGasPrice) < 0 {
+	if price.Cmp(minimalGasPrice) < 0 && p.slots+numSlots(bundle) > p.config.GlobalSlots {
 		return txpool.ErrBundleGasPriceLow
 	}
 	bundle.Price = price

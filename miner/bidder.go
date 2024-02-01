@@ -2,7 +2,6 @@ package miner
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -10,12 +9,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -50,7 +49,7 @@ type ValidatorConfig struct {
 type BidderConfig struct {
 	Enable     bool
 	Validators []ValidatorConfig
-	SecretKey  string
+	Account    common.Address
 }
 
 type Bidder struct {
@@ -63,7 +62,7 @@ type Bidder struct {
 	bestWorksMu sync.RWMutex
 	bestWorks   map[int64]*environment
 
-	builderSecretKey *ecdsa.PrivateKey
+	wallet accounts.Wallet
 }
 
 func NewBidder(config *BidderConfig, engine consensus.Engine, chain *core.BlockChain) *Bidder {
@@ -93,20 +92,6 @@ func NewBidder(config *BidderConfig, engine consensus.Engine, chain *core.BlockC
 		log.Warn("Bidder: No valid validators")
 	}
 
-	if config.SecretKey == "" {
-		log.Error("Bidder: no secret key")
-		return b
-	}
-	if config.SecretKey[:2] == "0x" {
-		config.SecretKey = config.SecretKey[2:]
-	}
-	pk, err := crypto.HexToECDSA(config.SecretKey)
-	if err != nil {
-		log.Error("Bidder: invalid secret key", "err", err)
-		return b
-	}
-	b.builderSecretKey = pk
-
 	return b
 }
 
@@ -134,6 +119,10 @@ func (b *Bidder) Bid(work *environment) {
 	// update the bestWork and do bid
 	b.setBestWork(work)
 	b.bid(work)
+}
+
+func (b *Bidder) SetWallet(wallet accounts.Wallet) {
+	b.wallet = wallet
 }
 
 func (b *Bidder) registered(validator common.Address) bool {
@@ -248,15 +237,14 @@ func (b *Bidder) getBestWork(blockNumber int64) *environment {
 	return b.bestWorks[blockNumber]
 }
 
-// signBid signs the bid with builder's secret key
+// signBid signs the bid with builder's account
 func (b *Bidder) signBid(bid *types.Bid) ([]byte, error) {
 	bz, err := rlp.EncodeToBytes(bid)
 	if err != nil {
 		return nil, err
 	}
 
-	digestHash := crypto.Keccak256(bz)
-	return crypto.Sign(digestHash, b.builderSecretKey)
+	return b.wallet.SignData(accounts.Account{Address: b.config.Account}, accounts.MimetypeTextPlain, bz)
 }
 
 // isEnabled returns whether the bid is enabled

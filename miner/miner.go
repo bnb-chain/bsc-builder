@@ -84,7 +84,7 @@ type Miner struct {
 	exitCh  chan struct{}
 	startCh chan struct{}
 	stopCh  chan struct{}
-	worker  *worker
+	Worker  *worker
 
 	wg sync.WaitGroup
 }
@@ -97,7 +97,7 @@ func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *even
 		exitCh:  make(chan struct{}),
 		startCh: make(chan struct{}),
 		stopCh:  make(chan struct{}),
-		worker:  newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, false),
+		Worker:  newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, false),
 	}
 	miner.wg.Add(1)
 	go miner.update()
@@ -132,42 +132,42 @@ func (miner *Miner) update() {
 			switch ev.Data.(type) {
 			case downloader.StartEvent:
 				wasMining := miner.Mining()
-				miner.worker.stop()
+				miner.Worker.stop()
 				canStart = false
 				if wasMining {
 					// Resume mining after sync was finished
 					shouldStart = true
 					log.Info("Mining aborted due to sync")
 				}
-				miner.worker.syncing.Store(true)
+				miner.Worker.syncing.Store(true)
 
 			case downloader.FailedEvent:
 				canStart = true
 				if shouldStart {
-					miner.worker.start()
+					miner.Worker.start()
 				}
-				miner.worker.syncing.Store(false)
+				miner.Worker.syncing.Store(false)
 
 			case downloader.DoneEvent:
 				canStart = true
 				if shouldStart {
-					miner.worker.start()
+					miner.Worker.start()
 				}
-				miner.worker.syncing.Store(false)
+				miner.Worker.syncing.Store(false)
 
 				// Stop reacting to downloader events
 				events.Unsubscribe()
 			}
 		case <-miner.startCh:
 			if canStart {
-				miner.worker.start()
+				miner.Worker.start()
 			}
 			shouldStart = true
 		case <-miner.stopCh:
 			shouldStart = false
-			miner.worker.stop()
+			miner.Worker.stop()
 		case <-miner.exitCh:
-			miner.worker.close()
+			miner.Worker.close()
 			return
 		}
 	}
@@ -187,7 +187,7 @@ func (miner *Miner) Close() {
 }
 
 func (miner *Miner) Mining() bool {
-	return miner.worker.isRunning()
+	return miner.Worker.isRunning()
 }
 
 func (miner *Miner) Hashrate() uint64 {
@@ -201,34 +201,34 @@ func (miner *Miner) SetExtra(extra []byte) error {
 	if uint64(len(extra)) > params.MaximumExtraDataSize {
 		return fmt.Errorf("extra exceeds max length. %d > %v", len(extra), params.MaximumExtraDataSize)
 	}
-	miner.worker.setExtra(extra)
+	miner.Worker.setExtra(extra)
 	return nil
 }
 
 // SetRecommitInterval sets the interval for sealing work resubmitting.
 func (miner *Miner) SetRecommitInterval(interval time.Duration) {
-	miner.worker.setRecommitInterval(interval)
+	miner.Worker.setRecommitInterval(interval)
 }
 
 // Pending returns the currently pending block and associated state. The returned
 // values can be nil in case the pending block is not initialized
 func (miner *Miner) Pending() (*types.Block, *state.StateDB) {
-	if miner.worker.isRunning() {
-		pendingBlock, pendingState := miner.worker.pending()
+	if miner.Worker.isRunning() {
+		pendingBlock, pendingState := miner.Worker.pending()
 		if pendingState != nil && pendingBlock != nil {
 			return pendingBlock, pendingState
 		}
 	}
 	// fallback to latest block
-	block := miner.worker.chain.CurrentBlock()
+	block := miner.Worker.chain.CurrentBlock()
 	if block == nil {
 		return nil, nil
 	}
-	stateDb, err := miner.worker.chain.StateAt(block.Root)
+	stateDb, err := miner.Worker.chain.StateAt(block.Root)
 	if err != nil {
 		return nil, nil
 	}
-	return miner.worker.chain.GetBlockByHash(block.Hash()), stateDb
+	return miner.Worker.chain.GetBlockByHash(block.Hash()), stateDb
 }
 
 // PendingBlock returns the currently pending block. The returned block can be
@@ -238,41 +238,41 @@ func (miner *Miner) Pending() (*types.Block, *state.StateDB) {
 // simultaneously, please use Pending(), as the pending state can
 // change between multiple method calls
 func (miner *Miner) PendingBlock() *types.Block {
-	if miner.worker.isRunning() {
-		pendingBlock := miner.worker.pendingBlock()
+	if miner.Worker.isRunning() {
+		pendingBlock := miner.Worker.pendingBlock()
 		if pendingBlock != nil {
 			return pendingBlock
 		}
 	}
 	// fallback to latest block
-	return miner.worker.chain.GetBlockByHash(miner.worker.chain.CurrentBlock().Hash())
+	return miner.Worker.chain.GetBlockByHash(miner.Worker.chain.CurrentBlock().Hash())
 }
 
 // PendingBlockAndReceipts returns the currently pending block and corresponding receipts.
 // The returned values can be nil in case the pending block is not initialized.
 func (miner *Miner) PendingBlockAndReceipts() (*types.Block, types.Receipts) {
-	return miner.worker.pendingBlockAndReceipts()
+	return miner.Worker.pendingBlockAndReceipts()
 }
 
 func (miner *Miner) SetEtherbase(addr common.Address) {
-	miner.worker.setEtherbase(addr)
+	miner.Worker.setEtherbase(addr)
 }
 
 // SetGasCeil sets the gaslimit to strive for when mining blocks post 1559.
 // For pre-1559 blocks, it sets the ceiling.
 func (miner *Miner) SetGasCeil(ceil uint64) {
-	miner.worker.setGasCeil(ceil)
+	miner.Worker.setGasCeil(ceil)
 }
 
 // SubscribePendingLogs starts delivering logs from pending transactions
 // to the given channel.
 func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscription {
-	return miner.worker.pendingLogsFeed.Subscribe(ch)
+	return miner.Worker.pendingLogsFeed.Subscribe(ch)
 }
 
 // BuildPayload builds the payload according to the provided parameters.
 func (miner *Miner) BuildPayload(args *BuildPayloadArgs) (*Payload, error) {
-	return miner.worker.buildPayload(args)
+	return miner.Worker.buildPayload(args)
 }
 
 func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
@@ -286,13 +286,13 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     num.Add(num, common.Big1),
-		GasLimit:   core.CalcGasLimit(parent.GasLimit, miner.worker.config.GasCeil),
-		Extra:      miner.worker.extra,
+		GasLimit:   core.CalcGasLimit(parent.GasLimit, miner.Worker.config.GasCeil),
+		Extra:      miner.Worker.extra,
 		Time:       uint64(timestamp),
-		Coinbase:   miner.worker.etherbase(),
+		Coinbase:   miner.Worker.etherbase(),
 	}
 
-	if err := miner.worker.engine.Prepare(miner.eth.BlockChain(), header); err != nil {
+	if err := miner.Worker.engine.Prepare(miner.eth.BlockChain(), header); err != nil {
 		return nil, err
 	}
 
@@ -304,10 +304,10 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 	env := &environment{
 		header: header,
 		state:  state.Copy(),
-		signer: types.MakeSigner(miner.worker.chainConfig, header.Number, header.Time),
+		signer: types.MakeSigner(miner.Worker.chainConfig, header.Number, header.Time),
 	}
 
-	s, err := miner.worker.simulateBundles(env, []*types.Bundle{bundle}, nil)
+	s, err := miner.Worker.simulateBundles(env, []*types.Bundle{bundle})
 	if err != nil {
 		return nil, err
 	}
@@ -315,15 +315,15 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 }
 
 func (miner *Miner) RegisterMevValidator(validator common.Address, url string) error {
-	if miner.worker.bidder != nil {
-		return miner.worker.bidder.register(validator, url)
+	if miner.Worker.Bidder != nil {
+		return miner.Worker.Bidder.register(validator, url)
 	}
 
 	return fmt.Errorf("bidder is nil")
 }
 
 func (miner *Miner) UnregisterMevValidator(validator common.Address) {
-	if miner.worker.bidder != nil {
-		miner.worker.bidder.unregister(validator)
+	if miner.Worker.Bidder != nil {
+		miner.Worker.Bidder.unregister(validator)
 	}
 }

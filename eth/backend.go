@@ -266,7 +266,7 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		config.TxPool.Journal = stack.ResolvePath(config.TxPool.Journal)
 	}
 	legacyPool := legacypool.New(config.TxPool, eth.blockchain)
-	bundlePool := bundlepool.New(config.BundlePool, eth.blockchain)
+	bundlePool := bundlepool.New(config.BundlePool)
 
 	// TODO(Nathan): eth.txPool, err = txpool.New(new(big.Int).SetUint64(config.TxPool.PriceLimit), eth.blockchain, []txpool.SubPool{legacyPool, blobPool})
 	eth.txPool, err = txpool.New(new(big.Int).SetUint64(config.TxPool.PriceLimit), eth.blockchain, []txpool.SubPool{legacyPool, bundlePool})
@@ -295,9 +295,6 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 	eth.miner = miner.New(eth, &config.Miner, eth.blockchain.Config(), eth.EventMux(), eth.engine, eth.isLocalBlock)
 	eth.miner.SetExtra(makeExtraData(config.Miner.ExtraData))
 
-	bundlePool.SetBundleSimulator(eth.miner)
-
-	// Create voteManager instance
 	if posa, ok := eth.engine.(consensus.PoSA); ok {
 		// Create votePool instance
 		votePool := vote.NewVotePool(eth.blockchain, posa)
@@ -327,6 +324,17 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 				return nil, err
 			}
 			log.Info("Create voteManager successfully")
+		}
+
+		if config.Miner.Bidder.Enable {
+			bundlePool.SetBundleSimulator(eth.miner)
+
+			builderAccount, err := eth.accountManager.Find(accounts.Account{Address: config.Miner.Bidder.Account})
+			if err != nil {
+				log.Error("Failed to find builder account", "err", err)
+				return nil, err
+			}
+			eth.miner.Worker.Bidder.SetWallet(builderAccount)
 		}
 	}
 

@@ -228,7 +228,7 @@ type worker struct {
 	recentMinedBlocks *lru.Cache
 
 	// MEV
-	bidder      *Bidder
+	Bidder      *Bidder
 	bundleCache *BundleCache
 }
 
@@ -255,7 +255,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		exitCh:             make(chan struct{}),
 		resubmitIntervalCh: make(chan time.Duration),
 		recentMinedBlocks:  recentMinedBlocks,
-		bidder:             NewBidder(&config.Bidder, engine, eth.BlockChain()),
+		Bidder:             NewBidder(&config.Bidder, engine, eth.BlockChain()),
 		bundleCache:        NewBundleCache(),
 	}
 	// Subscribe events for blockchain
@@ -284,7 +284,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
 	// if not builder
-	if !worker.bidder.isEnabled() {
+	if !worker.Bidder.isEnabled() {
 		worker.wg.Add(2)
 		go worker.resultLoop()
 		go worker.taskLoop()
@@ -491,7 +491,7 @@ func (w *worker) mainLoop() {
 			}
 
 		case work := <-w.bidCh:
-			w.bidder.Bid(work)
+			w.Bidder.Bid(work)
 
 		// System stopped
 		case <-w.exitCh:
@@ -1007,7 +1007,7 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 	// Set the coinbase if the worker is running or it's required
 	var coinbase common.Address
 	if w.isRunning() {
-		if w.bidder.isEnabled() {
+		if w.Bidder.isEnabled() {
 			var err error
 			// take the next in-turn validator as coinbase
 			coinbase, err = w.engine.NextInTurnValidator(w.chain, w.chain.CurrentBlock())
@@ -1017,7 +1017,7 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 			}
 
 			// do not build work if not register to the coinbase
-			if !w.bidder.registered(coinbase) {
+			if !w.Bidder.registered(coinbase) {
 				log.Warn("Refusing to mine with unregistered validator")
 				return
 			}
