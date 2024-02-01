@@ -1,8 +1,10 @@
 package bundlepool
 
 import (
+	"container/heap"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -15,8 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
-	"sync/atomic"
-	"container/heap"
 )
 
 const (
@@ -241,15 +241,13 @@ func (p *BundlePool) Pending(enforceTips bool) map[common.Address][]*txpool.Lazy
 
 // SubscribeTransactions subscribes to new transaction events.
 func (p *BundlePool) SubscribeTransactions(ch chan<- core.NewTxsEvent) event.Subscription {
-	// TODO implement me
-	panic("implement me")
+	return nil
 }
 
 // SubscribeReannoTxsEvent should return an event subscription of
 // ReannoTxsEvent and send events to the given channel.
 func (p *BundlePool) SubscribeReannoTxsEvent(chan<- core.ReannoTxsEvent) event.Subscription {
-	// TODO implement me
-	panic("implement me")
+	return nil
 }
 
 // Nonce returns the next nonce of an account, with all transactions executable
@@ -282,8 +280,7 @@ func (p *BundlePool) ContentFrom(addr common.Address) ([]*types.Transaction, []*
 
 // Locals retrieves the accounts currently considered local by the pool.
 func (p *BundlePool) Locals() []common.Address {
-	// TODO implement me
-	panic("implement me")
+	return []common.Address{}
 }
 
 // Status returns the known status (unknown/pending/queued) of a transaction
