@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
@@ -290,6 +291,11 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 		Extra:      miner.Worker.extra,
 		Time:       uint64(timestamp),
 		Coinbase:   miner.Worker.etherbase(),
+	}
+
+	// Set baseFee and GasLimit if we are on an EIP-1559 chain
+	if miner.Worker.chainConfig.IsLondon(header.Number) {
+		header.BaseFee = eip1559.CalcBaseFee(miner.Worker.chainConfig, parent)
 	}
 
 	if err := miner.Worker.engine.Prepare(miner.eth.BlockChain(), header); err != nil {

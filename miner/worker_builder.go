@@ -280,7 +280,7 @@ func (w *worker) simulateBundles(env *environment, bundles []*types.Bundle) ([]*
 	simulatedBundles := make([]*types.SimulatedBundle, 0)
 
 	for _, bundle := range simResult {
-		if bundle != nil {
+		if bundle == nil {
 			continue
 		}
 
