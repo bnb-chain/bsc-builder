@@ -256,6 +256,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		resubmitIntervalCh: make(chan time.Duration),
 		recentMinedBlocks:  recentMinedBlocks,
 		Bidder:             NewBidder(&config.Bidder, engine, eth.BlockChain()),
+		bidCh:              make(chan *environment, 10),
 		bundleCache:        NewBundleCache(),
 	}
 	// Subscribe events for blockchain
@@ -423,6 +424,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 	}
 
 	for {
+		log.Info("worker newLoop running...")
 		select {
 		case <-w.startCh:
 			clearPending(w.chain.CurrentBlock().Number.Uint64())
@@ -430,6 +432,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			commit(commitInterruptNewHead)
 
 		case head := <-w.chainHeadCh:
+			log.Info("worker received new head", "number", head.Block.NumberU64(), "running", w.isRunning())
 			if !w.isRunning() {
 				continue
 			}
@@ -1201,7 +1204,7 @@ LOOP:
 // Note the assumption is held that the mutation is allowed to the passed env, do
 // the deep copy first.
 func (w *worker) commit(env *environment, interval func(), update bool, start time.Time) error {
-	if w.isRunning() {
+	if w.isRunning() && !w.Bidder.isEnabled() {
 		if interval != nil {
 			interval()
 		}

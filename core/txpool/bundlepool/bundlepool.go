@@ -239,8 +239,7 @@ func (p *BundlePool) SubscribeReannoTxsEvent(chan<- core.ReannoTxsEvent) event.S
 // Nonce returns the next nonce of an account, with all transactions executable
 // by the pool already applied on topool.
 func (p *BundlePool) Nonce(addr common.Address) uint64 {
-	// TODO implement me
-	panic("implement me")
+	return 0
 }
 
 // Stats retrieves the current pool stats, namely the number of pending and the

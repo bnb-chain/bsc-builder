@@ -30,6 +30,7 @@ import (
 
 	exlru "github.com/hashicorp/golang-lru"
 	"golang.org/x/crypto/sha3"
+	"golang.org/x/exp/slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/lru"
@@ -54,7 +55,6 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/ethereum/go-ethereum/trie/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/trie/triedb/pathdb"
-	"golang.org/x/exp/slices"
 )
 
 var (
@@ -2033,7 +2033,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks, setHead bool) (int, error)
 			go throwaway.TriePrefetchInAdvance(block, signer)
 		}
 
-		//Process block using the parent state as reference point
+		// Process block using the parent state as reference point
 		if bc.pipeCommit {
 			statedb.EnablePipeCommit()
 		}
