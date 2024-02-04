@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sync"
 	"time"
+
+	"golang.org/x/exp/slices"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -18,8 +21,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
-	"golang.org/x/exp/slices"
-	"sync"
 )
 
 var (
@@ -226,6 +227,8 @@ func (b *Bidder) bid(work *environment) {
 	}
 
 	log.Debug("Bidder: bidding success")
+
+	return
 }
 
 // signBid signs the bid with builder's account

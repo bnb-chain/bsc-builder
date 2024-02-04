@@ -30,6 +30,9 @@ func (w *worker) commitWorkV2(interruptCh chan int32, timestamp int64) {
 // fillTransactions retrieves the pending bundles and transactions from the txpool and fills them
 // into the given sealing block. The selection and ordering strategy can be extended in the future.
 func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environment, stopTimer *time.Timer) error {
+	env.blockReward = new(big.Int)
+	env.profit = new(big.Int)
+
 	var (
 		pending   map[common.Address][]*txpool.LazyTransaction
 		localTxs  map[common.Address][]*txpool.LazyTransaction
@@ -303,8 +306,10 @@ func (w *worker) mergeBundles(
 
 	includedTxs := types.Transactions{}
 	mergedBundle := types.SimulatedBundle{
-		BundleGasUsed:  0,
-		BundleGasPrice: new(big.Int),
+		BundleGasFees:   new(big.Int),
+		BundleGasUsed:   0,
+		BundleGasPrice:  new(big.Int),
+		EthSentToSystem: new(big.Int),
 	}
 
 	for _, bundle := range bundles {

@@ -278,7 +278,6 @@ func (miner *Miner) BuildPayload(args *BuildPayloadArgs) (*Payload, error) {
 
 func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 	parent := miner.eth.BlockChain().CurrentBlock()
-	num := parent.Number
 	timestamp := time.Now().Unix()
 	if parent.Time >= uint64(timestamp) {
 		timestamp = int64(parent.Time + 1)
@@ -286,7 +285,7 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 
 	header := &types.Header{
 		ParentHash: parent.Hash(),
-		Number:     num.Add(num, common.Big1),
+		Number:     new(big.Int).SetUint64(parent.Number.Uint64() + 1),
 		GasLimit:   core.CalcGasLimit(parent.GasLimit, miner.Worker.config.GasCeil),
 		Extra:      miner.Worker.extra,
 		Time:       uint64(timestamp),

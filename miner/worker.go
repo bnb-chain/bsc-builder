@@ -425,7 +425,6 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 	}
 
 	for {
-		log.Info("worker newLoop running...")
 		select {
 		case <-w.startCh:
 			clearPending(w.chain.CurrentBlock().Number.Uint64())
@@ -433,7 +432,6 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			commit(commitInterruptNewHead)
 
 		case head := <-w.chainHeadCh:
-			log.Info("worker received new head", "number", head.Block.NumberU64(), "running", w.isRunning())
 			if !w.isRunning() {
 				continue
 			}
