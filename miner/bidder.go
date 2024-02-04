@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts"
@@ -19,6 +18,8 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
+	"golang.org/x/exp/slices"
+	"sync"
 )
 
 var (
@@ -47,9 +48,10 @@ type ValidatorConfig struct {
 }
 
 type BidderConfig struct {
-	Enable     bool
-	Validators []ValidatorConfig
-	Account    common.Address
+	Enable        bool
+	Validators    []ValidatorConfig
+	Account       common.Address
+	DelayLeftOver time.Duration
 }
 
 type Bidder struct {
@@ -59,8 +61,12 @@ type Bidder struct {
 
 	validators map[common.Address]*ethclient.Client // validator address -> ethclient.Client
 
-	bestWorksMu sync.RWMutex
-	bestWorks   map[int64]*environment
+	works map[int64][]*environment
+
+	newBidCh chan *environment
+	exitCh   chan struct{}
+
+	wg sync.WaitGroup
 
 	wallet accounts.Wallet
 }
@@ -71,7 +77,9 @@ func NewBidder(config *BidderConfig, engine consensus.Engine, chain *core.BlockC
 		engine:     engine,
 		chain:      chain,
 		validators: make(map[common.Address]*ethclient.Client),
-		bestWorks:  make(map[int64]*environment),
+		works:      make(map[int64][]*environment),
+		newBidCh:   make(chan *environment, 10),
+		exitCh:     make(chan struct{}),
 	}
 
 	if !config.Enable {
@@ -95,30 +103,40 @@ func NewBidder(config *BidderConfig, engine consensus.Engine, chain *core.BlockC
 	return b
 }
 
-// Bid called by go routine
-// 1. ignore and return if bidder is disabled
-// 2. panic if no valid validators
-// 3. ignore and return if the work is not better than the current best work
-// 4. update the bestWork and do bid
-func (b *Bidder) Bid(work *environment) {
-	if !b.config.Enable {
-		log.Warn("Bidder: disabled")
-		return
-	}
+func (b *Bidder) mainLoop() {
+	defer b.wg.Done()
 
-	if len(b.validators) == 0 {
-		log.Crit("Bidder: No valid validators")
-		return
-	}
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+	<-timer.C // discard the initial tick
 
-	// if the work is not better than the current best work, ignore it
-	if !b.isBestWork(work) {
-		return
-	}
+	currentHeight := b.chain.CurrentBlock().Number.Int64()
+	for {
+		select {
+		case work := <-b.newBidCh:
+			if work.header.Number.Int64() > currentHeight {
+				currentHeight = work.header.Number.Int64()
+				nextHeaderTimestamp := work.header.Time + b.chain.Config().Parlia.Period
+				timer.Reset(time.Until(time.Unix(int64(nextHeaderTimestamp), 0).Add(-b.config.DelayLeftOver)))
+			}
+			b.works[work.header.Number.Int64()] = append(b.works[work.header.Number.Int64()], work)
+		case <-timer.C:
+			works := b.works[currentHeight]
+			slices.SortStableFunc(works, func(i, j *environment) int {
+				return j.profit.Cmp(i.profit)
+			})
 
-	// update the bestWork and do bid
-	b.setBestWork(work)
-	b.bid(work)
+			for i, work := range works {
+				// only bid for the top 3 most profitable works
+				if i >= 3 {
+					break
+				}
+				b.bid(work)
+			}
+		case <-b.exitCh:
+			return
+		}
+	}
 }
 
 func (b *Bidder) SetWallet(wallet accounts.Wallet) {
@@ -208,33 +226,6 @@ func (b *Bidder) bid(work *environment) {
 	}
 
 	log.Debug("Bidder: bidding success")
-
-	return
-}
-
-// isBestWork returns the work is better than the current best work
-func (b *Bidder) isBestWork(work *environment) bool {
-	if work.profit == nil {
-		return false
-	}
-
-	return b.getBestWork(work.header.Number.Int64()).profit.Cmp(work.profit) < 0
-}
-
-// setBestWork sets the best work
-func (b *Bidder) setBestWork(work *environment) {
-	b.bestWorksMu.Lock()
-	defer b.bestWorksMu.Unlock()
-
-	b.bestWorks[work.header.Number.Int64()] = work
-}
-
-// getBestWork returns the best work
-func (b *Bidder) getBestWork(blockNumber int64) *environment {
-	b.bestWorksMu.RLock()
-	defer b.bestWorksMu.RUnlock()
-
-	return b.bestWorks[blockNumber]
 }
 
 // signBid signs the bid with builder's account

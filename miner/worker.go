@@ -184,7 +184,6 @@ type worker struct {
 	startCh            chan struct{}
 	exitCh             chan struct{}
 	resubmitIntervalCh chan time.Duration
-	bidCh              chan *environment
 
 	wg sync.WaitGroup
 
@@ -256,7 +255,6 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		resubmitIntervalCh: make(chan time.Duration),
 		recentMinedBlocks:  recentMinedBlocks,
 		Bidder:             NewBidder(&config.Bidder, engine, eth.BlockChain()),
-		bidCh:              make(chan *environment, 10),
 		bundleCache:        NewBundleCache(),
 	}
 	// Subscribe events for blockchain
@@ -289,6 +287,9 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		worker.wg.Add(2)
 		go worker.resultLoop()
 		go worker.taskLoop()
+	} else {
+		worker.Bidder.wg.Add(1)
+		go worker.Bidder.mainLoop()
 	}
 
 	// Submit first work to initialize pending state.
@@ -493,11 +494,12 @@ func (w *worker) mainLoop() {
 				fees:  fees,
 			}
 
-		case work := <-w.bidCh:
-			w.Bidder.Bid(work)
-
 		// System stopped
 		case <-w.exitCh:
+			if w.Bidder.isEnabled() {
+				close(w.Bidder.exitCh)
+				w.Bidder.wg.Wait()
+			}
 			return
 		case <-w.chainHeadSub.Err():
 			return
@@ -1120,7 +1122,9 @@ LOOP:
 			break LOOP
 		}
 
-		w.bidCh <- work
+		if w.Bidder.isEnabled() {
+			w.Bidder.newBidCh <- work
+		}
 
 		if interruptCh == nil || stopTimer == nil {
 			// it is single commit work, no need to try several time.
