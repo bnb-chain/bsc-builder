@@ -285,7 +285,7 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 
 	header := &types.Header{
 		ParentHash: parent.Hash(),
-		Number:     new(big.Int).SetUint64(parent.Number.Uint64() + 1),
+		Number:     new(big.Int).Add(parent.Number, common.Big1),
 		GasLimit:   core.CalcGasLimit(parent.GasLimit, miner.Worker.config.GasCeil),
 		Extra:      miner.Worker.extra,
 		Time:       uint64(timestamp),
