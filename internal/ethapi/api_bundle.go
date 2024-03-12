@@ -47,7 +47,7 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args *types.SendBun
 		args.MaxTimestamp = &maxTimeStamp
 	}
 
-	if args.MaxBlockNumber != 0 && args.MaxBlockNumber.Int64() > currentHeader.Number.Int64()+MaxBundleAliveBlock {
+	if args.MaxBlockNumber != 0 && args.MaxBlockNumber > currentHeader.Number.Uint64()+MaxBundleAliveBlock {
 		return newBundleError(errors.New("the maxBlockNumber should not be lager than currentBlockNum + 100"))
 	}
 
@@ -88,7 +88,7 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args *types.SendBun
 
 	bundle := &types.Bundle{
 		Txs:               txs,
-		MaxBlockNumber:    uint64(args.MaxBlockNumber),
+		MaxBlockNumber:    args.MaxBlockNumber,
 		MinTimestamp:      minTimestamp,
 		MaxTimestamp:      maxTimestamp,
 		RevertingTxHashes: args.RevertingTxHashes,

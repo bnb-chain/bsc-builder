@@ -7,13 +7,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 // SendBundleArgs represents the arguments for a call.
 type SendBundleArgs struct {
 	Txs               []hexutil.Bytes `json:"txs"`
-	MaxBlockNumber    rpc.BlockNumber `json:"maxBlockNumber"`
+	MaxBlockNumber    uint64          `json:"maxBlockNumber"`
 	MinTimestamp      *uint64         `json:"minTimestamp"`
 	MaxTimestamp      *uint64         `json:"maxTimestamp"`
 	RevertingTxHashes []common.Hash   `json:"revertingTxHashes"`
