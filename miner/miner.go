@@ -18,6 +18,7 @@
 package miner
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -341,5 +342,10 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if len(s) == 0 {
+		return nil, errors.New("no valid sim result")
+	}
+
 	return s[0].BundleGasPrice, nil
 }
