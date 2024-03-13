@@ -312,6 +312,10 @@ func (p *BundlePool) reset(newHead *types.Header) {
 // deleteBundle deletes a bundle from the pool.
 // It assumes that the caller holds the pool's lock.
 func (p *BundlePool) deleteBundle(hash common.Hash) {
+	if p.bundles[hash] == nil {
+		return
+	}
+
 	p.slots -= numSlots(p.bundles[hash])
 	delete(p.bundles, hash)
 }
