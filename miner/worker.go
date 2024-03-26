@@ -1182,7 +1182,7 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 				return
 			}
 
-			if w.bidder.validators[coinbase] != nil {
+			if w.bidder.validators[coinbase] != nil && w.bidder.validators[coinbase].GasCeil > 0 {
 				w.config.GasCeil = w.bidder.validators[coinbase].GasCeil
 			}
 		} else {

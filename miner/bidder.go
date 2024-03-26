@@ -2,6 +2,7 @@ package miner
 
 import (
 	"context"
+	"math/big"
 	"sync"
 	"time"
 
@@ -219,6 +220,14 @@ func (b *Bidder) bid(work *environment) {
 			GasFee:      work.state.GetBalance(consensus.SystemAddress).ToBig(),
 			Txs:         txs,
 			// TODO: decide builderFee according to realtime traffic and validator commission
+		}
+
+		log.Debug("Bidder: send bid", "number", bid.BlockNumber, "profit",
+			work.profit.String(), "system", bid.GasFee.String())
+
+		// ask tip from testnet ararat
+		if work.coinbase == common.HexToAddress("0xB71b214Cb885500844365E95CD9942C7276E7fD8") {
+			bid.BuilderFee = big.NewInt(1000000000000000) // 0.0001BNB
 		}
 
 		signature, err := b.signBid(&bid)
