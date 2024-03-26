@@ -1181,6 +1181,8 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 				log.Warn("Consensus engine does not support validator setting")
 				return
 			}
+
+			w.config.GasCeil = w.bidder.validators[coinbase].GasCeil
 		} else {
 			coinbase = w.etherbase()
 			if coinbase == (common.Address{}) {
