@@ -1,38 +1,96 @@
 [bsc readme](README.original.md)
 
-# BSC Builder
+## Overview
 
-This project implements the BEP-322: Builder API Specification for BNB Smart Chain.
+The BSC network has introduced the [Builder API Specification](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP322.md) to establish a fair and unified MEV market. Previously, BSC clients lacked native support for validators to integrate with multiple MEV providers at once. The network became unstable because of the many different versions of the client software being used. The latest BSC client adopts the [Proposer-Builder Separation](https://ethereum.org/en/roadmap/pbs/) model. Within this unified framework, several aspects of the BSC network have been improved:
+
+- Stability: Validators only need to use the official client to seamlessly integrate with various Builders.
+- Economy: Builders that can enter without permission promote healthy market competition. Validators can extract more value by integrating with more builders, which benefits delegators as well.
+- Transparency: This specification aims to bring transparency to the BSC MEV market, exposing profit distribution among stakeholders to the public.
 
 This project represents a minimal implementation of the protocol and is provided as is. We make no guarantees regarding its functionality or security.
 
-See also: https://github.com/bnb-chain/BEPs/pull/322
+## What is MEV and PBS
 
-# Usage
+MEV, also known as Maximum (or Miner) Extractable Value, can be described as the measure of total value that may be extracted from transaction ordering. Common examples include arbitraging swaps on decentralized exchanges or identifying opportunities to liquidate DeFi positions. Maximizing MEV requires advanced technical expertise and custom software integrated into regular validators. The returns are likely higher with centralized operators.
 
-Builder-related settings are configured in the `config.toml` file. The following is an example of a `config.toml` file:
+Proposer-builder separation(PBS) solves this problem by reconfiguring the economics of MEV. Block builders create blocks and submit them to the block proposer, and the block proposer simply chooses the most profitable one, paying a fee to the block builder. This means even if a small group of specialized block builders dominate MEV extraction, the reward still goes to any validator on the network.
 
-```
+## How it Works on BSC
+
+![PBS Workflow](./docs/assets/pbs_workflow.png)
+
+The figure above illustrates the basic workflow of PBS operating on the BSC network.
+
+- MEV Searchers are independent network participants who detect profitable MEV opportunities and submit their transactions to builders. Transactions from searchers are usually bundled together and included in a block, or none of them will be included.
+- The builder collects transactions from various sources to create an unsealed block and offer it to the block proposer. The builder will specify in the request the amount of fees the proposer needs to pay to the builder if this block is adopted. The unsealed block from the builder is also called a block bid as it may request tips.
+- The proposer chooses the most profitable block from multiple builders, and pays the fee to the builder by appending a payment transaction at the end of the block.
+
+A new component called "Sentry" has been introduced to enhance network security and account isolation. It assists proposers in communicating with builders and enables payment processing.
+
+## What is More
+
+The PBS model on BSC differs in several aspects from its implementation on Ethereum. This is primarily due to：
+
+  1. Different Trust Model. Validators in the BNB Smart Chain are considered more trustworthy, as it requires substantial BNB delegation and must maintain a high reputation. This stands in contrast to Ethereum, where becoming an Ethereum validator is much easier, the barrier to becoming a validator is very low (i.e., 32 ETH).
+  2. Different Consensus Algorithms. In Ethereum, a block header is transferred from a builder to a validator for signing, allowing the block to be broadcasted to the network without disclosing the transactions to the validator. In contrast, in BSC, creating a valid block header requires executing transactions and system contract calls (such as transferring reward and depositing to the validator set contract), making it impossible for builders to propose the whole block.
+  3. Different Blocking Time. With a shorter block time of 3 seconds in BSC compared to Ethereum's 12 seconds, designing for time efficiency becomes crucial.
+
+These differences have led to different designs on BSC's PBS regarding payment, interaction, and APIs. For more design philosophy, please refer to [BEP322:Builder API Specification for BNB Smart Chain](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP322.md).
+
+## Integration Guide for Builder
+
+The [Builder API Specification](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP322.md) defines the standard interface that builders should implement, while the specific implementation is left open to MEV API providers. The BNB Chain community offers a [simple implementation](https://github.com/bnb-chain/bsc-builder) example for reference.
+
+### Customize Builder
+
+Although the builder offers great flexibility, there are still some essential standards that must be followed:
+
+  1. The builder needs to set up a builder account, which is used to sign the block bid and receive fees. The builder can ask for a tip (builder fee) on the block that it sends to the sentry. If the block is finally selected, the builder account will receive the tip.
+  2. The builder needs to implement the mev_reportIssue API to receive the errors report from validators.
+  3. In order to prevent transaction leakage, the builder can only send block bids to the in-turn validator.
+  4. At most 3 block bids are allowed to be sent at the same height from the same builder.
+
+Here are some sentry APIs that may interest a builder:
+
+  1. `mev_bestBidGasFee`. It will return the current most profitable reward that the validator received among all the blocks received from all builders. The reward is calculated as: `gasFee*(1 - commissionRate) - tipToBuilder`. A builder may compare the `bestBidGasFee` with a local one and then decide to send the block bid or not.
+  2. `mev_params`. It will return the `BidSimulationLeftOver`,`ValidatorCommission`, `GasCeil` and `BidFeeCeil` settings on the validator. If the current time is after `(except block time - BidSimulationLeftOver)`, then there is no need to send block bids anymore; `ValidatorCommission` and `BidFeeCeil` helps the builder to build its fee charge strategy. The `GasCeil` helps a builder know when to stop adding more transactions.
+
+Builders have the freedom to define various aspects like pricing models for users, creating intuitive APIs, and define the bundle verification rules.
+
+### Setup with Example Builder
+
+Step 1: Find Validator Information
+For validators that open MEV integration, the public information is shown at [bsc-mev-info](https://github.com/bnb-chain/bsc-mev-info). Builders can also provide information here to the validator.
+
+Step 2: Set up Builder.
+The builder must sign the bid using an account, such as the etherbase account specified in the config.toml file.
+
+```toml
 [Eth.Miner.Mev]
-Enabled = false
-ValidatorCommission = 100
-BidSimulationLeftOver = 50
-BuilderEnabled = true
-BuilderAccount = {{BUILDER_ADDRESS}}
+BuilderEnabled = true # open bid sending
+BuilderAccount = "0x..." # builder address which signs bid, usually it is the same as etherbase address
+
+# Configure the validator node list, including the address of the validator and the public URL. The public URL refers to the sentry service.
+[[Eth.Miner.Mev.Validators]]
+Address = "0x23707D3D71E31e4Cb5B4A9816DfBDCA6455B52B3"
+URL = "https://bsc-fuji.io"
 
 [[Eth.Miner.Mev.Validators]]
-Address = {{VALIDATOR_ADDRESS}}
-URL = {{VALIDATOR_URL}}
-...
+Address = "0x..."
+URL = "https://bsc-mathwallet.io"
 ```
 
-- `Enabled`: Whether to enable validator mev.
-- `BuilderEnabled`: Whether to enable the builder mev.
-- `BuilderAccount`: The account address to unlock of the builder.
-- `BidSimulationLeftOver`: The left over of the bid simulation.
-- `Validators`: A list of validators to bid for.
-  - `Address`: The address of the validator.
-  - `URL`: The URL of the validator.
+## FAQ
+
+1. Do builders fetch the in-turn proposer’s GasCeil to build block？
+    Yes, you could using RPC mev_params to query validator’s MEV information before building block, it can help to 1) calculate a valid header with gas no more than GasCeil; 2) calculate the left bidding time by BidSimulationLeftOver; 3) calculate suitable builderFee by validatorCommission.
+
+2. How does the validator choose the best bid?
+    The block reward is calculated as `gasFee`, the validator reward is calculated as `gasFee*validatorCommissionRate - builderFee`. Every time the validator receives a new bid, it will compare its reward with the existing best bid. If it has better block reward and validator reward, the new bid will go into simulation. If simulation succeeds before block sealing, it will be compared with local mined block reward. If the bid’s block reward and validator reward are both superior to the local block, it will be sealed by the validator.
+
+3. Who can become the builder?
+    Anyone is allowed to become a builder.
 
 ## License
 
