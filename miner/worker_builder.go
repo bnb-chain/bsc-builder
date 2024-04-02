@@ -284,6 +284,7 @@ func (w *worker) simulateBundles(env *environment, bundles []*types.Bundle) ([]*
 	simResult := make(map[common.Hash]*types.SimulatedBundle)
 
 	var wg sync.WaitGroup
+	var mu sync.Mutex
 	for i, bundle := range bundles {
 		if simmed, ok := simCache.GetSimulatedBundle(bundle.Hash()); ok {
 			simResult[bundle.Hash()] = simmed
@@ -301,6 +302,8 @@ func (w *worker) simulateBundles(env *environment, bundles []*types.Bundle) ([]*
 				return
 			}
 
+			mu.Lock()
+			defer mu.Unlock()
 			simResult[bundle.Hash()] = simmed
 		}(i, bundle, env.state.Copy())
 	}
