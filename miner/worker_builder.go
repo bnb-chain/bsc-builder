@@ -287,7 +287,9 @@ func (w *worker) simulateBundles(env *environment, bundles []*types.Bundle) ([]*
 	var mu sync.Mutex
 	for i, bundle := range bundles {
 		if simmed, ok := simCache.GetSimulatedBundle(bundle.Hash()); ok {
+			mu.Lock()
 			simResult[bundle.Hash()] = simmed
+			mu.Unlock()
 			continue
 		}
 
