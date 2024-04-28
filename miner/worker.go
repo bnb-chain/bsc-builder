@@ -1182,9 +1182,11 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 				return
 			}
 
+			w.bidder.validatorsMu.Lock()
 			if w.bidder.validators[coinbase] != nil {
 				w.config.GasCeil = w.bidder.validators[coinbase].GasCeil
 			}
+			w.bidder.validatorsMu.Unlock()
 		} else {
 			coinbase = w.etherbase()
 			if coinbase == (common.Address{}) {
