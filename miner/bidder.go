@@ -2,6 +2,7 @@ package miner
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -16,7 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/miner/validatorclient"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
-	"errors"
 )
 
 const maxBid int64 = 3
