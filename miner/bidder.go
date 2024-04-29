@@ -76,7 +76,7 @@ func NewBidder(config *MevConfig, delayLeftOver time.Duration, engine consensus.
 	b.wallet = wallet
 
 	for _, v := range config.Validators {
-		b.registerValidator(v)
+		b.register(v)
 	}
 
 	if len(b.validators) == 0 {
@@ -149,23 +149,35 @@ func (b *Bidder) mainLoop() {
 func (b *Bidder) reconnectLoop() {
 	defer b.wg.Done()
 
+	timer := time.NewTimer(10 * time.Minute)
+	defer timer.Stop()
+
 	for {
 		select {
-		case <-time.After(10 * time.Minute):
+		case <-timer.C:
 			for _, v := range b.config.Validators {
-				if b.registered(v.Address) {
+				if b.isRegistered(v.Address) {
 					continue
 				}
 
-				b.registerValidator(v)
+				b.register(v)
 			}
+
+			timer.Reset(10 * time.Minute)
 		case <-b.exitCh:
 			return
 		}
 	}
 }
 
-func (b *Bidder) registerValidator(cfg ValidatorConfig) {
+func (b *Bidder) isRegistered(validator common.Address) bool {
+	b.validatorsMu.RLock()
+	defer b.validatorsMu.RUnlock()
+	_, ok := b.validators[validator]
+	return ok
+}
+
+func (b *Bidder) register(cfg ValidatorConfig) {
 	b.validatorsMu.Lock()
 	defer b.validatorsMu.Unlock()
 
@@ -186,13 +198,6 @@ func (b *Bidder) registerValidator(cfg ValidatorConfig) {
 		BidSimulationLeftOver: params.BidSimulationLeftOver,
 		GasCeil:               params.GasCeil,
 	}
-}
-
-func (b *Bidder) registered(validator common.Address) bool {
-	b.validatorsMu.RLock()
-	defer b.validatorsMu.RUnlock()
-	_, ok := b.validators[validator]
-	return ok
 }
 
 func (b *Bidder) unregister(validator common.Address) {
