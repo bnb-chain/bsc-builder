@@ -149,12 +149,12 @@ func (b *Bidder) mainLoop() {
 func (b *Bidder) reconnectLoop() {
 	defer b.wg.Done()
 
-	timer := time.NewTimer(10 * time.Minute)
-	defer timer.Stop()
+	ticker := time.NewTicker(10 * time.Minute)
+	defer ticker.Stop()
 
 	for {
 		select {
-		case <-timer.C:
+		case <-ticker.C:
 			for _, v := range b.config.Validators {
 				if b.isRegistered(v.Address) {
 					continue
@@ -162,8 +162,6 @@ func (b *Bidder) reconnectLoop() {
 
 				b.register(v)
 			}
-
-			timer.Reset(10 * time.Minute)
 		case <-b.exitCh:
 			return
 		}
