@@ -141,8 +141,11 @@ type AncientWriter interface {
 	// in the newest format.
 	MigrateTable(string, func([]byte) ([]byte, error)) error
 
-	// ResetTable will reset certain table to new boundary
-	ResetTable(kind string, tail uint64, head uint64, onlyEmpty bool) error
+	// TruncateTableTail will truncate certain table to new tail
+	TruncateTableTail(kind string, tail uint64) (uint64, error)
+
+	// ResetTable will reset certain table with new start point
+	ResetTable(kind string, startAt uint64, onlyEmpty bool) error
 }
 
 type FreezerEnv struct {
@@ -177,12 +180,26 @@ type StateStoreReader interface {
 	StateStoreReader() Reader
 }
 
+type BlockStore interface {
+	BlockStore() Database
+	SetBlockStore(block Database)
+}
+
+type BlockStoreReader interface {
+	BlockStoreReader() Reader
+}
+
+type BlockStoreWriter interface {
+	BlockStoreWriter() Writer
+}
+
 // Reader contains the methods required to read data from both key-value as well as
 // immutable ancient data.
 type Reader interface {
 	KeyValueReader
 	AncientReader
 	StateStoreReader
+	BlockStoreReader
 }
 
 // Writer contains the methods required to write data to both key-value as well as
@@ -190,6 +207,7 @@ type Reader interface {
 type Writer interface {
 	KeyValueWriter
 	AncientWriter
+	BlockStoreWriter
 }
 
 // Stater contains the methods required to retrieve states from both key-value as well as
@@ -224,6 +242,7 @@ type Database interface {
 	Writer
 	DiffStore
 	StateStore
+	BlockStore
 	Batcher
 	Iteratee
 	Stater

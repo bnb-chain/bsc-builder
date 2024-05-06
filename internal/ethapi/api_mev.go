@@ -8,10 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
-)
-
-const (
-	TransferTxGasLimit = 25000
+	"github.com/ethereum/go-ethereum/params"
 )
 
 // MevAPI implements the interfaces that defined in the BEP-322.
@@ -28,7 +25,7 @@ func NewMevAPI(b Backend) *MevAPI {
 // SendBid receives bid from the builders.
 // If mev is not running or bid is invalid, return error.
 // Otherwise, creates a builder bid for the given argument, submit it to the miner.
-func (m *MevAPI) SendBid(ctx context.Context, args *types.BidArgs) (common.Hash, error) {
+func (m *MevAPI) SendBid(ctx context.Context, args types.BidArgs) (common.Hash, error) {
 	if !m.b.MevRunning() {
 		return common.Hash{}, types.ErrMevNotRunning
 	}
@@ -66,36 +63,21 @@ func (m *MevAPI) SendBid(ctx context.Context, args *types.BidArgs) (common.Hash,
 			return common.Hash{}, types.NewInvalidBidError("builder fee should not be less than 0")
 		}
 
-		if builderFee.Cmp(common.Big0) == 0 {
-			if len(args.PayBidTx) != 0 || args.PayBidTxGasUsed != 0 {
-				return common.Hash{}, types.NewInvalidPayBidTxError("payBidTx should be nil when builder fee is 0")
-			}
-		}
-
 		if builderFee.Cmp(rawBid.GasFee) >= 0 {
 			return common.Hash{}, types.NewInvalidBidError("builder fee must be less than gas fee")
 		}
-
-		if builderFee.Cmp(common.Big0) > 0 {
-			// payBidTx can be nil when validator and builder take some other settlement
-
-			if args.PayBidTxGasUsed > TransferTxGasLimit {
-				return common.Hash{}, types.NewInvalidBidError(
-					fmt.Sprintf("transfer tx gas used must be no more than %v", TransferTxGasLimit))
-			}
-
-			if (len(args.PayBidTx) == 0 && args.PayBidTxGasUsed != 0) ||
-				(len(args.PayBidTx) != 0 && args.PayBidTxGasUsed == 0) {
-				return common.Hash{}, types.NewInvalidPayBidTxError("non-aligned payBidTx and payBidTxGasUsed")
-			}
-		}
-	} else {
-		if len(args.PayBidTx) != 0 || args.PayBidTxGasUsed != 0 {
-			return common.Hash{}, types.NewInvalidPayBidTxError("payBidTx should be nil when builder fee is nil")
-		}
 	}
 
-	return m.b.SendBid(ctx, args)
+	if len(args.PayBidTx) == 0 || args.PayBidTxGasUsed == 0 {
+		return common.Hash{}, types.NewInvalidPayBidTxError("payBidTx and payBidTxGasUsed are must-have")
+	}
+
+	if args.PayBidTxGasUsed > params.PayBidTxGasLimit {
+		return common.Hash{}, types.NewInvalidBidError(
+			fmt.Sprintf("transfer tx gas used must be no more than %v", params.PayBidTxGasLimit))
+	}
+
+	return m.b.SendBid(ctx, &args)
 }
 
 func (m *MevAPI) BestBidGasFee(_ context.Context, parentHash common.Hash) *big.Int {

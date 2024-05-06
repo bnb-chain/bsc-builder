@@ -116,6 +116,9 @@ func NewDatabase(diskdb ethdb.Database, config *Config) *Database {
 			config.HashDB = hashdb.Defaults
 		}
 	}
+	if config.PathDB != nil && config.NoTries {
+		config.PathDB.NoTries = true
+	}
 	var preimages *preimageStore
 	if config.Preimages {
 		preimages = newPreimageStore(triediskdb)
@@ -390,7 +393,7 @@ func (db *Database) Head() common.Hash {
 	return pdb.Head()
 }
 
-// GetAllHash returns all MPT root hash in diffLayer and diskLayer.
+// GetAllRooHash returns all MPT root hash in diffLayer and diskLayer.
 // It's only supported by path-based database and will return nil for
 // others.
 func (db *Database) GetAllRooHash() [][]string {

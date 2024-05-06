@@ -130,6 +130,9 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 	}
 	bundle.Price = price
 
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	hash := bundle.Hash()
 	if _, ok := p.bundles[hash]; ok {
 		return ErrBundleAlreadyExist
@@ -137,8 +140,6 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 	for p.slots+numSlots(bundle) > p.config.GlobalSlots {
 		p.drop()
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
 	p.bundles[hash] = bundle
 	heap.Push(&p.bundleHeap, bundle)
 	p.slots += numSlots(bundle)
@@ -190,7 +191,7 @@ func (p *BundlePool) PendingBundles(blockNumber uint64, blockTimestamp uint64) [
 
 // AllBundles returns all the bundles currently in the pool
 func (p *BundlePool) AllBundles() []*types.Bundle {
-	p.mu.RUnlock()
+	p.mu.RLock()
 	defer p.mu.RUnlock()
 	bundles := make([]*types.Bundle, 0, len(p.bundles))
 	for _, bundle := range p.bundles {

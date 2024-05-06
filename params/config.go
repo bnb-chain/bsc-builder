@@ -148,13 +148,12 @@ var (
 		HertzBlock:          big.NewInt(31302048),
 		HertzfixBlock:       big.NewInt(34140700),
 		// UnixTime: 1705996800 is January 23, 2024 8:00:00 AM UTC
-		ShanghaiTime: newUint64(1705996800),
-		KeplerTime:   newUint64(1705996800),
+		ShanghaiTime:   newUint64(1705996800),
+		KeplerTime:     newUint64(1705996800),
+		FeynmanTime:    newUint64(1713419340),
+		FeynmanFixTime: newUint64(1713419340),
 		// TODO(GalaIO): enable cancun fork time later
 		//CancunTime: newUint64(),
-
-		// TODO
-		FeynmanTime: nil,
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -188,13 +187,11 @@ var (
 		LondonBlock:         big.NewInt(31103030),
 		HertzBlock:          big.NewInt(31103030),
 		HertzfixBlock:       big.NewInt(35682300),
-		// UnixTime: 1702972800 is December 19, 2023 8:00:00 AM UTC
-		ShanghaiTime:   newUint64(1702972800),
-		KeplerTime:     newUint64(1702972800),
-		FeynmanTime:    newUint64(1710136800),
-		FeynmanFixTime: newUint64(1711342800),
-		// TODO(GalaIO): enable cancun fork time later
-		//CancunTime: newUint64(),
+		ShanghaiTime:        newUint64(1702972800), // 2023-12-19 8:00:00 AM UTC
+		KeplerTime:          newUint64(1702972800),
+		FeynmanTime:         newUint64(1710136800), // 2024-03-11 6:00:00 AM UTC
+		FeynmanFixTime:      newUint64(1711342800), // 2024-03-25 5:00:00 AM UTC
+		CancunTime:          newUint64(1713330442), // 2024-04-17 05:07:22 AM UTC
 
 		Parlia: &ParliaConfig{
 			Period: 3,
@@ -1273,7 +1270,7 @@ func newTimestampCompatError(what string, storedtime, newtime *uint64) *ConfigCo
 		NewTime:      newtime,
 		RewindToTime: 0,
 	}
-	if rew != nil {
+	if rew != nil && *rew != 0 {
 		err.RewindToTime = *rew - 1
 	}
 	return err
@@ -1283,7 +1280,13 @@ func (err *ConfigCompatError) Error() string {
 	if err.StoredBlock != nil {
 		return fmt.Sprintf("mismatching %s in database (have block %d, want block %d, rewindto block %d)", err.What, err.StoredBlock, err.NewBlock, err.RewindToBlock)
 	}
-	return fmt.Sprintf("mismatching %s in database (have timestamp %d, want timestamp %d, rewindto timestamp %d)", err.What, err.StoredTime, err.NewTime, err.RewindToTime)
+
+	if err.StoredTime == nil {
+		return fmt.Sprintf("mismatching %s in database (have timestamp nil, want timestamp %d, rewindto timestamp %d)", err.What, *err.NewTime, err.RewindToTime)
+	} else if err.NewTime == nil {
+		return fmt.Sprintf("mismatching %s in database (have timestamp %d, want timestamp nil, rewindto timestamp %d)", err.What, *err.StoredTime, err.RewindToTime)
+	}
+	return fmt.Sprintf("mismatching %s in database (have timestamp %d, want timestamp %d, rewindto timestamp %d)", err.What, *err.StoredTime, *err.NewTime, err.RewindToTime)
 }
 
 // Rules wraps ChainConfig and is merely syntactic sugar or can be used for functions

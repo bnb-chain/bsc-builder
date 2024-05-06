@@ -351,7 +351,7 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 			return engine.STATUS_INVALID, engine.InvalidForkChoiceState.With(errors.New("final block not in canonical chain"))
 		}
 		// Set the finalized block
-		// api.eth.BlockChain().SetFinalized(finalBlock.Header())
+		api.eth.BlockChain().SetFinalized(finalBlock.Header())
 	}
 	// Check if the safe block hash is in our canonical tree, if not something is wrong
 	if update.SafeBlockHash != (common.Hash{}) {
@@ -874,7 +874,7 @@ func getBody(block *types.Block) *engine.ExecutionPayloadBodyV1 {
 	}
 
 	// Post-shanghai withdrawals MUST be set to empty slice instead of nil
-	if withdrawals == nil && !block.Header().EmptyWithdrawalsHash() {
+	if withdrawals == nil && block.Header().WithdrawalsHash != nil {
 		withdrawals = make([]*types.Withdrawal, 0)
 	}
 

@@ -5,14 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
+
+	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+)
+
+var (
+	daCheckTimer = metrics.NewRegisteredTimer("chain/dacheck", nil)
 )
 
 // validateBlobSidecar it is same as validateBlobSidecar in core/txpool/validation.go
@@ -47,15 +53,16 @@ func validateBlobSidecar(hashes []common.Hash, sidecar *types.BlobSidecar) error
 
 // IsDataAvailable it checks that the blobTx block has available blob data
 func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err error) {
+	defer func(start time.Time) {
+		daCheckTimer.Update(time.Since(start))
+	}(time.Now())
+
 	// refer logic in ValidateBody
 	if !chain.Config().IsCancun(block.Number(), block.Time()) {
-		if block.Sidecars() == nil {
-			return nil
-		} else {
+		if block.Sidecars() != nil {
 			return errors.New("sidecars present in block body before cancun")
 		}
-	} else if block.Sidecars() == nil {
-		return errors.New("missing sidecars in block body after cancun")
+		return nil
 	}
 
 	// only required to check within MinBlocksForBlobRequests block's DA
@@ -64,15 +71,16 @@ func IsDataAvailable(chain consensus.ChainHeaderReader, block *types.Block) (err
 	if highest == nil || highest.Number.Cmp(current.Number) < 0 {
 		highest = current
 	}
-	defer func() {
-		log.Info("IsDataAvailable", "block", block.Number(), "hash", block.Hash(), "highest", highest.Number, "sidecars", len(block.Sidecars()), "err", err)
-	}()
 	if block.NumberU64()+params.MinBlocksForBlobRequests < highest.Number.Uint64() {
 		// if we needn't check DA of this block, just clean it
 		block.CleanSidecars()
 		return nil
 	}
 
+	// if sidecar is nil, just clean it. And it will be used for saving in ancient.
+	if block.Sidecars() == nil {
+		block.CleanSidecars()
+	}
 	sidecars := block.Sidecars()
 	for _, s := range sidecars {
 		if err := s.SanityCheck(block.Number(), block.Hash()); err != nil {

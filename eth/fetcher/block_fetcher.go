@@ -363,7 +363,6 @@ func (f *BlockFetcher) loop() {
 		}
 		// Import any queued blocks that could potentially fit
 		height := f.chainHeight()
-		finalizedHeight := f.chainFinalizedHeight()
 		for !f.queue.Empty() {
 			op := f.queue.PopItem()
 			hash := op.hash()
@@ -380,6 +379,7 @@ func (f *BlockFetcher) loop() {
 				break
 			}
 			// Otherwise if fresh and still unknown, try and import
+			finalizedHeight := f.chainFinalizedHeight()
 			if (number+maxUncleDist < height) || number <= finalizedHeight || (f.light && f.getHeader(hash) != nil) || (!f.light && f.getBlock(hash) != nil) {
 				f.forgetBlock(hash)
 				continue
@@ -576,7 +576,7 @@ func (f *BlockFetcher) loop() {
 					select {
 					case res := <-resCh:
 						res.Done <- nil
-						// Ignoring withdrawals here, since the block fetcher is not used post-merge.
+						// Ignoring withdrawals here, will set it to empty later if EmptyWithdrawalsHash in header.
 						txs, uncles, _, sidecars := res.Res.(*eth.BlockBodiesResponse).Unpack()
 						f.FilterBodies(peer, txs, uncles, sidecars, time.Now())
 
@@ -639,6 +639,9 @@ func (f *BlockFetcher) loop() {
 							log.Trace("Block empty, skipping body retrieval", "peer", announce.origin, "number", header.Number, "hash", header.Hash())
 
 							block := types.NewBlockWithHeader(header)
+							if block.Header().EmptyWithdrawalsHash() {
+								block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
+							}
 							block.ReceivedAt = task.time
 
 							complete = append(complete, block)
@@ -723,6 +726,9 @@ func (f *BlockFetcher) loop() {
 						matched = true
 						if f.getBlock(hash) == nil {
 							block := types.NewBlockWithHeader(announce.header).WithBody(task.transactions[i], task.uncles[i])
+							if block.Header().EmptyWithdrawalsHash() {
+								block = block.WithWithdrawals(make([]*types.Withdrawal, 0))
+							}
 							block = block.WithSidecars(task.sidecars[i])
 							block.ReceivedAt = task.time
 							blocks = append(blocks, block)
