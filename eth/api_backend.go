@@ -313,7 +313,8 @@ func (b *EthAPIBackend) BundlePrice() *big.Int {
 
 	gasFloor := big.NewInt(b.eth.config.Miner.MevGasPriceFloor)
 	idx := len(bundles) / 2
-	if bundles[idx].Price.Cmp(gasFloor) < 0 {
+
+	if bundles[idx] == nil || bundles[idx].Price.Cmp(gasFloor) < 0 {
 		return gasFloor
 	}
 
