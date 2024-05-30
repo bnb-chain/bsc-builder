@@ -28,6 +28,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/eth/downloader"
 
+	"github.com/naoina/toml"
+	"github.com/urfave/cli/v2"
+
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/external"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -44,8 +47,6 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/naoina/toml"
-	"github.com/urfave/cli/v2"
 )
 
 var (
@@ -196,14 +197,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if ctx.IsSet(utils.OverrideVerkle.Name) {
 		v := ctx.Uint64(utils.OverrideVerkle.Name)
 		cfg.Eth.OverrideVerkle = &v
-	}
-	if ctx.IsSet(utils.OverrideFeynman.Name) {
-		v := ctx.Uint64(utils.OverrideFeynman.Name)
-		cfg.Eth.OverrideFeynman = &v
-	}
-	if ctx.IsSet(utils.OverrideFeynmanFix.Name) {
-		v := ctx.Uint64(utils.OverrideFeynmanFix.Name)
-		cfg.Eth.OverrideFeynmanFix = &v
 	}
 	if ctx.IsSet(utils.OverrideFullImmutabilityThreshold.Name) {
 		params.FullImmutabilityThreshold = ctx.Uint64(utils.OverrideFullImmutabilityThreshold.Name)
