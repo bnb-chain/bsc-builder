@@ -133,7 +133,7 @@ func (ec *Client) BlockReceipts(ctx context.Context, blockNrOrHash rpc.BlockNumb
 // BlobSidecars return the Sidecars of a given block number or hash.
 func (ec *Client) BlobSidecars(ctx context.Context, blockNrOrHash rpc.BlockNumberOrHash) ([]*types.BlobTxSidecar, error) {
 	var r []*types.BlobTxSidecar
-	err := ec.c.CallContext(ctx, &r, "eth_getBlobSidecars", blockNrOrHash.String())
+	err := ec.c.CallContext(ctx, &r, "eth_getBlobSidecars", blockNrOrHash.String(), true)
 	if err == nil && r == nil {
 		return nil, ethereum.NotFound
 	}
@@ -143,7 +143,7 @@ func (ec *Client) BlobSidecars(ctx context.Context, blockNrOrHash rpc.BlockNumbe
 // BlobSidecarByTxHash return a sidecar of a given blob transaction
 func (ec *Client) BlobSidecarByTxHash(ctx context.Context, hash common.Hash) (*types.BlobTxSidecar, error) {
 	var r *types.BlobTxSidecar
-	err := ec.c.CallContext(ctx, &r, "eth_getBlockSidecarByTxHash", hash)
+	err := ec.c.CallContext(ctx, &r, "eth_getBlockSidecarByTxHash", hash, true)
 	if err == nil && r == nil {
 		return nil, ethereum.NotFound
 	}
@@ -770,23 +770,6 @@ func (ec *Client) BestBidGasFee(ctx context.Context, parentHash common.Hash) (*b
 		return nil, err
 	}
 	return fee, nil
-}
-
-// SendBundle sends a bundle
-func (ec *Client) SendBundle(ctx context.Context, args types.SendBundleArgs) (common.Hash, error) {
-	var hash common.Hash
-	err := ec.c.CallContext(ctx, &hash, "eth_sendBundle", args)
-	if err != nil {
-		return common.Hash{}, err
-	}
-	return hash, nil
-}
-
-// BundlePrice returns the price of a bundle
-func (ec *Client) BundlePrice(ctx context.Context) *big.Int {
-	var price *big.Int
-	_ = ec.c.CallContext(ctx, &price, "eth_bundlePrice")
-	return price
 }
 
 // MevParams returns the static params of mev
