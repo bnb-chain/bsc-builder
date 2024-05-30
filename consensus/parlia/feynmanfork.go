@@ -15,13 +15,14 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
+const SecondsPerDay uint64 = 86400
+
 // the params should be two blocks' time(timestamp)
 func sameDayInUTC(first, second uint64) bool {
-	return first/params.BreatheBlockInterval == second/params.BreatheBlockInterval
+	return first/SecondsPerDay == second/SecondsPerDay
 }
 
 func isBreatheBlock(lastBlockTime, blockTime uint64) bool {

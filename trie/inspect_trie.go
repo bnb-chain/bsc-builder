@@ -4,15 +4,17 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"math/big"
+	"os"
 	"runtime"
-	"strings"
+	"sort"
+	"strconv"
 	"sync"
 	"sync/atomic"
 
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/mclock"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -24,113 +26,63 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
+type Account struct {
+	Nonce    uint64
+	Balance  *big.Int
+	Root     common.Hash // merkle root of the storage trie
+	CodeHash []byte
+}
+
 type Database interface {
 	database.Database
 	Scheme() string
 	Cap(limit common.StorageSize) error
 	DiskDB() ethdb.Database
 }
-
-const TopN = 3
-
 type Inspector struct {
 	trie           *Trie // traverse trie
 	db             Database
 	stateRootHash  common.Hash
-	blockNum       uint64
+	blocknum       uint64
 	root           node // root of triedb
+	totalNum       uint64
+	wg             sync.WaitGroup
+	statLock       sync.RWMutex
+	result         map[string]*TrieTreeStat
 	sem            *semaphore.Weighted
 	eoaAccountNums uint64
-
-	wg sync.WaitGroup
-
-	results stat
-	topN    int
-
-	totalAccountNum atomic.Uint64
-	totalStorageNum atomic.Uint64
-	lastTime        mclock.AbsTime
 }
 
-type stat struct {
-	lock             sync.RWMutex
-	account          *trieStat
-	storageTopN      []*trieStat
-	storageTopNTotal []uint64
-	storageTotal     nodeStat
-	storageTrieNum   uint64
+type TrieTreeStat struct {
+	is_account_trie    bool
+	theNodeStatByLevel [15]NodeStat
+	totalNodeStat      NodeStat
 }
 
-type trieStat struct {
-	owner           common.Hash
-	totalNodeStat   nodeStat
-	nodeStatByLevel [16]nodeStat
+type NodeStat struct {
+	ShortNodeCnt uint64
+	FullNodeCnt  uint64
+	ValueNodeCnt uint64
 }
 
-type nodeStat struct {
-	ShortNodeCnt atomic.Uint64
-	FullNodeCnt  atomic.Uint64
-	ValueNodeCnt atomic.Uint64
-}
-
-func (ns *nodeStat) IsEmpty() bool {
-	if ns.FullNodeCnt.Load() == 0 && ns.ShortNodeCnt.Load() == 0 && ns.ValueNodeCnt.Load() == 0 {
-		return true
-	}
-	return false
-}
-
-func (s *stat) add(ts *trieStat, topN int) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-	if ts.owner == (common.Hash{}) {
-		s.account = ts
-		return
-	}
-
-	total := ts.totalNodeStat.ValueNodeCnt.Load() + ts.totalNodeStat.FullNodeCnt.Load() + ts.totalNodeStat.ShortNodeCnt.Load()
-	if len(s.storageTopNTotal) == 0 || total > s.storageTopNTotal[len(s.storageTopNTotal)-1] {
-		var (
-			i int
-			t uint64
-		)
-		for i, t = range s.storageTopNTotal {
-			if total < t {
-				continue
-			}
-			break
-		}
-		s.storageTopNTotal = append(s.storageTopNTotal[:i], append([]uint64{total}, s.storageTopNTotal[i:]...)...)
-		s.storageTopN = append(s.storageTopN[:i], append([]*trieStat{ts}, s.storageTopN[i:]...)...)
-		if len(s.storageTopN) > topN {
-			s.storageTopNTotal = s.storageTopNTotal[:topN]
-			s.storageTopN = s.storageTopN[:topN]
-		}
-	}
-
-	s.storageTotal.ShortNodeCnt.Add(ts.totalNodeStat.ShortNodeCnt.Load())
-	s.storageTotal.ValueNodeCnt.Add(ts.totalNodeStat.ValueNodeCnt.Load())
-	s.storageTotal.FullNodeCnt.Add(ts.totalNodeStat.FullNodeCnt.Load())
-	s.storageTrieNum++
-}
-
-func (trieStat *trieStat) add(theNode node, height int) {
+func (trieStat *TrieTreeStat) AtomicAdd(theNode node, height uint32) {
 	switch (theNode).(type) {
 	case *shortNode:
-		trieStat.totalNodeStat.ShortNodeCnt.Add(1)
-		trieStat.nodeStatByLevel[height].ShortNodeCnt.Add(1)
+		atomic.AddUint64(&trieStat.totalNodeStat.ShortNodeCnt, 1)
+		atomic.AddUint64(&(trieStat.theNodeStatByLevel[height].ShortNodeCnt), 1)
 	case *fullNode:
-		trieStat.totalNodeStat.FullNodeCnt.Add(1)
-		trieStat.nodeStatByLevel[height].FullNodeCnt.Add(1)
+		atomic.AddUint64(&trieStat.totalNodeStat.FullNodeCnt, 1)
+		atomic.AddUint64(&trieStat.theNodeStatByLevel[height].FullNodeCnt, 1)
 	case valueNode:
-		trieStat.totalNodeStat.ValueNodeCnt.Add(1)
-		trieStat.nodeStatByLevel[height].ValueNodeCnt.Add(1)
+		atomic.AddUint64(&trieStat.totalNodeStat.ValueNodeCnt, 1)
+		atomic.AddUint64(&((trieStat.theNodeStatByLevel[height]).ValueNodeCnt), 1)
+	default:
+		panic(errors.New("Invalid node type to statistics"))
 	}
 }
 
-func (trieStat *trieStat) Display(ownerAddress string, treeType string) string {
-	sw := new(strings.Builder)
-	table := tablewriter.NewWriter(sw)
+func (trieStat *TrieTreeStat) Display(ownerAddress string, treeType string) {
+	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"-", "Level", "ShortNodeCnt", "FullNodeCnt", "ValueNodeCnt"})
 	if ownerAddress == "" {
 		table.SetCaption(true, fmt.Sprintf("%v", treeType))
@@ -138,27 +90,38 @@ func (trieStat *trieStat) Display(ownerAddress string, treeType string) string {
 		table.SetCaption(true, fmt.Sprintf("%v-%v", treeType, ownerAddress))
 	}
 	table.SetAlignment(1)
-
-	for i := range trieStat.nodeStatByLevel {
-		if trieStat.nodeStatByLevel[i].IsEmpty() {
-			continue
+	for i := 0; i < len(trieStat.theNodeStatByLevel); i++ {
+		nodeStat := trieStat.theNodeStatByLevel[i]
+		if nodeStat.FullNodeCnt == 0 && nodeStat.ShortNodeCnt == 0 && nodeStat.ValueNodeCnt == 0 {
+			break
 		}
 		table.AppendBulk([][]string{
-			{"-", fmt.Sprintf("%d", i),
-				fmt.Sprintf("%d", trieStat.nodeStatByLevel[i].ShortNodeCnt.Load()),
-				fmt.Sprintf("%d", trieStat.nodeStatByLevel[i].FullNodeCnt.Load()),
-				fmt.Sprintf("%d", trieStat.nodeStatByLevel[i].ValueNodeCnt.Load())},
+			{"-", strconv.Itoa(i), nodeStat.ShortNodeCount(), nodeStat.FullNodeCount(), nodeStat.ValueNodeCount()},
 		})
 	}
 	table.AppendBulk([][]string{
-		{"Total", "-", fmt.Sprintf("%d", trieStat.totalNodeStat.ShortNodeCnt.Load()), fmt.Sprintf("%d", trieStat.totalNodeStat.FullNodeCnt.Load()), fmt.Sprintf("%d", trieStat.totalNodeStat.ValueNodeCnt.Load())},
+		{"Total", "-", trieStat.totalNodeStat.ShortNodeCount(), trieStat.totalNodeStat.FullNodeCount(), trieStat.totalNodeStat.ValueNodeCount()},
 	})
 	table.Render()
-	return sw.String()
+}
+
+func Uint64ToString(cnt uint64) string {
+	return fmt.Sprintf("%v", cnt)
+}
+
+func (nodeStat *NodeStat) ShortNodeCount() string {
+	return Uint64ToString(nodeStat.ShortNodeCnt)
+}
+
+func (nodeStat *NodeStat) FullNodeCount() string {
+	return Uint64ToString(nodeStat.FullNodeCnt)
+}
+func (nodeStat *NodeStat) ValueNodeCount() string {
+	return Uint64ToString(nodeStat.ValueNodeCnt)
 }
 
 // NewInspector return a inspector obj
-func NewInspector(tr *Trie, db Database, stateRootHash common.Hash, blockNum uint64, jobNum uint64, topN int) (*Inspector, error) {
+func NewInspector(tr *Trie, db Database, stateRootHash common.Hash, blocknum uint64, jobnum uint64) (*Inspector, error) {
 	if tr == nil {
 		return nil, errors.New("trie is nil")
 	}
@@ -168,20 +131,15 @@ func NewInspector(tr *Trie, db Database, stateRootHash common.Hash, blockNum uin
 	}
 
 	ins := &Inspector{
-		trie:            tr,
-		db:              db,
-		stateRootHash:   stateRootHash,
-		blockNum:        blockNum,
-		root:            tr.root,
-		results:         stat{},
-		topN:            topN,
-		totalAccountNum: atomic.Uint64{},
-		totalStorageNum: atomic.Uint64{},
-		lastTime:        mclock.Now(),
-		sem:             semaphore.NewWeighted(int64(jobNum)),
-
-		wg: sync.WaitGroup{},
-
+		trie:           tr,
+		db:             db,
+		stateRootHash:  stateRootHash,
+		blocknum:       blocknum,
+		root:           tr.root,
+		result:         make(map[string]*TrieTreeStat),
+		totalNum:       (uint64)(0),
+		wg:             sync.WaitGroup{},
+		sem:            semaphore.NewWeighted(int64(jobnum)),
 		eoaAccountNums: 0,
 	}
 
@@ -189,123 +147,155 @@ func NewInspector(tr *Trie, db Database, stateRootHash common.Hash, blockNum uin
 }
 
 // Run statistics, external call
-func (s *Inspector) Run() {
-	ticker := time.NewTicker(30 * time.Second)
-	go func() {
-		defer ticker.Stop()
-		for range ticker.C {
-			if s.db.Scheme() == rawdb.HashScheme {
-				s.db.Cap(DEFAULT_TRIEDBCACHE_SIZE)
-			}
-			runtime.GC()
-		}
-	}()
-
-	log.Info("Find Account Trie Tree", "rootHash: ", s.trie.Hash().String(), "BlockNum: ", s.blockNum)
-
-	ts := &trieStat{
-		owner: common.Hash{},
+func (inspect *Inspector) Run() {
+	accountTrieStat := &TrieTreeStat{
+		is_account_trie: true,
 	}
-	s.traversal(s.trie, ts, s.root, 0, []byte{})
-	s.results.add(ts, s.topN)
-	s.wg.Wait()
+	if inspect.db.Scheme() == rawdb.HashScheme {
+		ticker := time.NewTicker(30 * time.Second)
+		go func() {
+			defer ticker.Stop()
+			for range ticker.C {
+				inspect.db.Cap(DEFAULT_TRIEDBCACHE_SIZE)
+			}
+		}()
+	}
+
+	if _, ok := inspect.result[""]; !ok {
+		inspect.result[""] = accountTrieStat
+	}
+	log.Info("Find Account Trie Tree", "rootHash: ", inspect.trie.Hash().String(), "BlockNum: ", inspect.blocknum)
+
+	inspect.ConcurrentTraversal(inspect.trie, accountTrieStat, inspect.root, 0, []byte{})
+	inspect.wg.Wait()
 }
 
-func (s *Inspector) traversal(trie *Trie, ts *trieStat, n node, height int, path []byte) {
+func (inspect *Inspector) SubConcurrentTraversal(theTrie *Trie, theTrieTreeStat *TrieTreeStat, theNode node, height uint32, path []byte) {
+	inspect.ConcurrentTraversal(theTrie, theTrieTreeStat, theNode, height, path)
+	inspect.wg.Done()
+}
+
+func (inspect *Inspector) ConcurrentTraversal(theTrie *Trie, theTrieTreeStat *TrieTreeStat, theNode node, height uint32, path []byte) {
+	// print process progress
+	total_num := atomic.AddUint64(&inspect.totalNum, 1)
+	if total_num%100000 == 0 {
+		fmt.Printf("Complete progress: %v, go routines Num: %v\n", total_num, runtime.NumGoroutine())
+	}
+
 	// nil node
-	if n == nil {
+	if theNode == nil {
 		return
 	}
 
-	ts.add(n, height)
-
-	switch current := (n).(type) {
+	switch current := (theNode).(type) {
 	case *shortNode:
-		s.traversal(trie, ts, current.Val, height, append(path, current.Key...))
+		inspect.ConcurrentTraversal(theTrie, theTrieTreeStat, current.Val, height, append(path, current.Key...))
 	case *fullNode:
 		for idx, child := range current.Children {
 			if child == nil {
 				continue
 			}
-			p := common.CopyBytes(append(path, byte(idx)))
-			s.traversal(trie, ts, child, height+1, p)
+			childPath := append(path, byte(idx))
+			if inspect.sem.TryAcquire(1) {
+				inspect.wg.Add(1)
+				dst := make([]byte, len(childPath))
+				copy(dst, childPath)
+				go inspect.SubConcurrentTraversal(theTrie, theTrieTreeStat, child, height+1, dst)
+			} else {
+				inspect.ConcurrentTraversal(theTrie, theTrieTreeStat, child, height+1, childPath)
+			}
 		}
 	case hashNode:
-		tn, err := trie.resloveWithoutTrack(current, path)
+		n, err := theTrie.resloveWithoutTrack(current, path)
 		if err != nil {
-			fmt.Printf("Resolve HashNode error: %v, TrieRoot: %v, Height: %v, Path: %v\n", err, trie.Hash().String(), height+1, path)
+			fmt.Printf("Resolve HashNode error: %v, TrieRoot: %v, Height: %v, Path: %v\n", err, theTrie.Hash().String(), height+1, path)
 			return
 		}
-		s.PrintProgress(trie)
-		s.traversal(trie, ts, tn, height, path)
+		inspect.ConcurrentTraversal(theTrie, theTrieTreeStat, n, height, path)
+		return
 	case valueNode:
 		if !hasTerm(path) {
 			break
 		}
-		var account types.StateAccount
+		var account Account
 		if err := rlp.Decode(bytes.NewReader(current), &account); err != nil {
 			break
 		}
 		if common.BytesToHash(account.CodeHash) == types.EmptyCodeHash {
-			s.eoaAccountNums++
+			inspect.eoaAccountNums++
 		}
 		if account.Root == (common.Hash{}) || account.Root == types.EmptyRootHash {
 			break
 		}
 		ownerAddress := common.BytesToHash(hexToCompact(path))
-		contractTrie, err := New(StorageTrieID(s.stateRootHash, ownerAddress, account.Root), s.db)
+		contractTrie, err := New(StorageTrieID(inspect.stateRootHash, ownerAddress, account.Root), inspect.db)
 		if err != nil {
-			panic(err)
+			fmt.Printf("New contract trie node: %v, error: %v, Height: %v, Path: %v\n", theNode, err, height, path)
+			break
 		}
 		contractTrie.tracer.reset()
-
-		if s.sem.TryAcquire(1) {
-			s.wg.Add(1)
-			go func() {
-				t := &trieStat{
-					owner: ownerAddress,
-				}
-				s.traversal(contractTrie, t, contractTrie.root, 0, []byte{})
-				s.results.add(t, s.topN)
-				s.sem.Release(1)
-				s.wg.Done()
-			}()
-		} else {
-			t := &trieStat{
-				owner: ownerAddress,
-			}
-			s.traversal(contractTrie, t, contractTrie.root, 0, []byte{})
-			s.results.add(t, s.topN)
+		trieStat := &TrieTreeStat{
+			is_account_trie: false,
 		}
+
+		inspect.statLock.Lock()
+		if _, ok := inspect.result[ownerAddress.String()]; !ok {
+			inspect.result[ownerAddress.String()] = trieStat
+		}
+		inspect.statLock.Unlock()
+
+		// log.Info("Find Contract Trie Tree, rootHash: ", contractTrie.Hash().String(), "")
+		inspect.wg.Add(1)
+		go inspect.SubConcurrentTraversal(contractTrie, trieStat, contractTrie.root, 0, []byte{})
 	default:
-		panic(errors.New("invalid node type to traverse"))
+		panic(errors.New("Invalid node type to traverse."))
 	}
+	theTrieTreeStat.AtomicAdd(theNode, height)
 }
 
-func (s *Inspector) PrintProgress(t *Trie) {
-	var (
-		elapsed = mclock.Now().Sub(s.lastTime)
-	)
-	if t.owner == (common.Hash{}) {
-		s.totalAccountNum.Add(1)
-	} else {
-		s.totalStorageNum.Add(1)
-	}
-	if elapsed > 4*time.Second {
-		log.Info("traversal progress", "TotalAccountNum", s.totalAccountNum.Load(), "TotalStorageNum", s.totalStorageNum.Load(), "Goroutine", runtime.NumGoroutine())
-		s.lastTime = mclock.Now()
-	}
-}
-
-func (s *Inspector) DisplayResult() {
+func (inspect *Inspector) DisplayResult() {
 	// display root hash
-	fmt.Println(s.results.account.Display("", "AccountTrie"))
-	fmt.Println("EOA accounts num: ", s.eoaAccountNums)
+	if _, ok := inspect.result[""]; !ok {
+		log.Info("Display result error", "missing account trie")
+		return
+	}
+	inspect.result[""].Display("", "AccountTrie")
 
+	type SortedTrie struct {
+		totalNum     uint64
+		ownerAddress string
+	}
 	// display contract trie
-	for _, st := range s.results.storageTopN {
-		fmt.Println(st.Display(st.owner.String(), "StorageTrie"))
+	var sortedTriesByNums []SortedTrie
+	var totalContactsNodeStat NodeStat
+	var contractTrieCnt uint64 = 0
+
+	for ownerAddress, stat := range inspect.result {
+		if ownerAddress == "" {
+			continue
+		}
+		contractTrieCnt++
+		totalContactsNodeStat.ShortNodeCnt += stat.totalNodeStat.ShortNodeCnt
+		totalContactsNodeStat.FullNodeCnt += stat.totalNodeStat.FullNodeCnt
+		totalContactsNodeStat.ValueNodeCnt += stat.totalNodeStat.ValueNodeCnt
+		totalNodeCnt := stat.totalNodeStat.ShortNodeCnt + stat.totalNodeStat.ValueNodeCnt + stat.totalNodeStat.FullNodeCnt
+		sortedTriesByNums = append(sortedTriesByNums, SortedTrie{totalNum: totalNodeCnt, ownerAddress: ownerAddress})
+	}
+	sort.Slice(sortedTriesByNums, func(i, j int) bool {
+		return sortedTriesByNums[i].totalNum > sortedTriesByNums[j].totalNum
+	})
+	fmt.Println("EOA accounts num: ", inspect.eoaAccountNums)
+	// only display top 5
+	for i, t := range sortedTriesByNums {
+		if i > 5 {
+			break
+		}
+		if stat, ok := inspect.result[t.ownerAddress]; !ok {
+			log.Error("Storage trie stat not found", "ownerAddress", t.ownerAddress)
+		} else {
+			stat.Display(t.ownerAddress, "ContractTrie")
+		}
 	}
 	fmt.Printf("Contract Trie, total trie num: %v, ShortNodeCnt: %v, FullNodeCnt: %v, ValueNodeCnt: %v\n",
-		s.results.storageTrieNum, s.results.storageTotal.ShortNodeCnt.Load(), s.results.storageTotal.FullNodeCnt.Load(), s.results.storageTotal.ValueNodeCnt.Load())
+		contractTrieCnt, totalContactsNodeStat.ShortNodeCnt, totalContactsNodeStat.FullNodeCnt, totalContactsNodeStat.ValueNodeCnt)
 }

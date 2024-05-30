@@ -94,8 +94,7 @@ type environment struct {
 	sidecars types.BlobSidecars
 	blobs    int
 
-	profit       *big.Int // block gas fee + BNBSentToSystem
-	UnRevertible []common.Hash
+	profit *big.Int // block gas fee + BNBSentToSystem
 }
 
 // copy creates a deep copy of environment.
@@ -342,12 +341,6 @@ func (w *worker) setGasCeil(ceil uint64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.config.GasCeil = ceil
-}
-
-func (w *worker) getGasCeil() uint64 {
-	w.mu.Lock()
-	defer w.mu.Unlock()
-	return w.config.GasCeil
 }
 
 // setExtra sets the content used to initialize the block extra field.
