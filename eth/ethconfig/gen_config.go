@@ -70,9 +70,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		RPCEVMTimeout           time.Duration
 		RPCTxFeeCap             float64
 		OverrideCancun          *uint64 `toml:",omitempty"`
+		OverrideHaber           *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
-		OverrideFeynman         *uint64 `toml:",omitempty"`
-		OverrideFeynmanFix      *uint64 `toml:",omitempty"`
 	}
 	var enc Config
 	enc.Genesis = c.Genesis
@@ -128,9 +127,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.RPCEVMTimeout = c.RPCEVMTimeout
 	enc.RPCTxFeeCap = c.RPCTxFeeCap
 	enc.OverrideCancun = c.OverrideCancun
+	enc.OverrideHaber = c.OverrideHaber
 	enc.OverrideVerkle = c.OverrideVerkle
-	enc.OverrideFeynman = c.OverrideFeynman
-	enc.OverrideFeynmanFix = c.OverrideFeynmanFix
 	return &enc, nil
 }
 
@@ -190,9 +188,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		RPCEVMTimeout           *time.Duration
 		RPCTxFeeCap             *float64
 		OverrideCancun          *uint64 `toml:",omitempty"`
+		OverrideHaber           *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
-		OverrideFeynman         *uint64 `toml:",omitempty"`
-		OverrideFeynmanFix      *uint64 `toml:",omitempty"`
 	}
 	var dec Config
 	if err := unmarshal(&dec); err != nil {
@@ -357,14 +354,11 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.OverrideCancun != nil {
 		c.OverrideCancun = dec.OverrideCancun
 	}
+	if dec.OverrideHaber != nil {
+		c.OverrideHaber = dec.OverrideHaber
+	}
 	if dec.OverrideVerkle != nil {
 		c.OverrideVerkle = dec.OverrideVerkle
-	}
-	if dec.OverrideFeynman != nil {
-		c.OverrideFeynman = dec.OverrideFeynman
-	}
-	if dec.OverrideFeynmanFix != nil {
-		c.OverrideFeynmanFix = dec.OverrideFeynmanFix
 	}
 	return nil
 }
