@@ -310,6 +310,11 @@ var (
 		Usage:    "Manually specify the Cancun fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverrideHaber = &cli.Uint64Flag{
+		Name:     "override.haber",
+		Usage:    "Manually specify the Haber fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
 	OverrideVerkle = &cli.Uint64Flag{
 		Name:     "override.verkle",
 		Usage:    "Manually specify the Verkle fork timestamp, overriding the bundled setting",
@@ -340,6 +345,12 @@ var (
 		Name:     "override.defaultextrareserve",
 		Usage:    "It adds more extra time for expired blobs for some request cases, only for testing purpose",
 		Value:    params.DefaultExtraReserveForBlobRequests,
+		Category: flags.EthCategory,
+	}
+	OverrideBreatheBlockInterval = &cli.Uint64Flag{
+		Name:     "override.breatheblockinterval",
+		Usage:    "It changes the interval between breathe blocks, only for testing purpose",
+		Value:    params.BreatheBlockInterval,
 		Category: flags.EthCategory,
 	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
