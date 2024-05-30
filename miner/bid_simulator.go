@@ -78,7 +78,6 @@ type simBidReq struct {
 type bidSimulator struct {
 	config        *MevConfig
 	delayLeftOver time.Duration
-	minGasPrice   *big.Int
 	chain         *core.BlockChain
 	chainConfig   *params.ChainConfig
 	engine        consensus.Engine
@@ -115,7 +114,6 @@ type bidSimulator struct {
 func newBidSimulator(
 	config *MevConfig,
 	delayLeftOver time.Duration,
-	minGasPrice *big.Int,
 	chain *core.BlockChain,
 	chainConfig *params.ChainConfig,
 	engine consensus.Engine,
@@ -124,7 +122,6 @@ func newBidSimulator(
 	b := &bidSimulator{
 		config:        config,
 		delayLeftOver: delayLeftOver,
-		minGasPrice:   minGasPrice,
 		chain:         chain,
 		chainConfig:   chainConfig,
 		engine:        engine,
@@ -595,7 +592,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		return
 	}
 
-	// commit transactions in bid
 	for _, tx := range bidRuntime.bid.Txs {
 		select {
 		case <-interruptCh:
@@ -613,7 +609,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 			break
 		}
 
-		err = bidRuntime.commitTransaction(b.chain, b.chainConfig, tx, bidRuntime.bid.UnRevertible.Contains(tx.Hash()))
+		err = bidRuntime.commitTransaction(b.chain, b.chainConfig, tx)
 		if err != nil {
 			log.Error("BidSimulator: failed to commit tx", "bidHash", bidRuntime.bid.Hash(), "tx", tx.Hash(), "err", err)
 			err = fmt.Errorf("invalid tx in bid, %v", err)
@@ -621,32 +617,15 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		}
 	}
 
-	// check if bid reward is valid
-	{
-		bidRuntime.packReward(b.config.ValidatorCommission)
-		if !bidRuntime.validReward() {
-			err = errors.New("reward does not achieve the expectation")
-			return
-		}
+	bidRuntime.packReward(b.config.ValidatorCommission)
+
+	// return if bid is invalid, reportIssue issue to mev-sentry/builder if simulation is fully done
+	if !bidRuntime.validReward() {
+		err = errors.New("reward does not achieve the expectation")
+		return
 	}
 
-	// check if bid gas price is lower than min gas price
-	{
-		bidGasUsed := uint64(0)
-		bidGasFee := bidRuntime.env.state.GetBalance(consensus.SystemAddress)
-
-		for _, receipt := range bidRuntime.env.receipts {
-			bidGasUsed += receipt.GasUsed
-		}
-
-		bidGasPrice := new(big.Int).Div(bidGasFee.ToBig(), new(big.Int).SetUint64(bidGasUsed))
-		if bidGasPrice.Cmp(b.minGasPrice) < 0 {
-			err = errors.New("bid gas price is lower than min gas price")
-			return
-		}
-	}
-
-	// if enable greedy merge, fill bid env with transactions from mempool
+	// fill transactions from mempool
 	if b.config.GreedyMergeTx {
 		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
 		if delay != nil && *delay > 0 {
@@ -666,9 +645,8 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		}
 	}
 
-	// commit payBidTx at the end of the block
 	bidRuntime.env.gasPool.AddGas(params.PayBidTxGasLimit)
-	err = bidRuntime.commitTransaction(b.chain, b.chainConfig, payBidTx, true)
+	err = bidRuntime.commitTransaction(b.chain, b.chainConfig, payBidTx)
 	if err != nil {
 		log.Error("BidSimulator: failed to commit tx", "builder", bidRuntime.bid.Builder,
 			"bidHash", bidRuntime.bid.Hash(), "tx", payBidTx.Hash(), "err", err)
@@ -749,10 +727,12 @@ func (r *BidRuntime) packReward(validatorCommission uint64) {
 	r.packedValidatorReward.Sub(r.packedValidatorReward, r.bid.BuilderFee)
 }
 
-func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *params.ChainConfig, tx *types.Transaction, unRevertible bool) error {
+func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *params.ChainConfig, tx *types.Transaction) error {
 	var (
-		env = r.env
-		sc  *types.BlobSidecar
+		env  = r.env
+		snap = env.state.Snapshot()
+		gp   = env.gasPool.Gas()
+		sc   *types.BlobSidecar
 	)
 
 	// Start executing the transaction
@@ -775,9 +755,9 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	receipt, err := core.ApplyTransaction(chainConfig, chain, &env.coinbase, env.gasPool, env.state, env.header, tx,
 		&env.header.GasUsed, *chain.GetVMConfig(), core.NewReceiptBloomGenerator())
 	if err != nil {
+		env.state.RevertToSnapshot(snap)
+		env.gasPool.SetGas(gp)
 		return err
-	} else if unRevertible && receipt.Status == types.ReceiptStatusFailed {
-		return errors.New("no revertible transaction failed")
 	}
 
 	if tx.Type() == types.BlobTxType {

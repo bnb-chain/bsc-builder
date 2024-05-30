@@ -254,12 +254,11 @@ func (b *Bidder) bid(work *environment) {
 		}
 
 		bid := types.RawBid{
-			BlockNumber:  parent.Number.Uint64() + 1,
-			ParentHash:   parent.Hash(),
-			GasUsed:      work.header.GasUsed,
-			GasFee:       work.state.GetBalance(consensus.SystemAddress).ToBig(),
-			Txs:          txs,
-			UnRevertible: work.UnRevertible,
+			BlockNumber: parent.Number.Uint64() + 1,
+			ParentHash:  parent.Hash(),
+			GasUsed:     work.header.GasUsed,
+			GasFee:      work.state.GetBalance(consensus.SystemAddress).ToBig(),
+			Txs:         txs,
 			// TODO: decide builderFee according to realtime traffic and validator commission
 		}
 

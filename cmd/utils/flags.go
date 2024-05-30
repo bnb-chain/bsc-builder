@@ -315,6 +315,15 @@ var (
 		Usage:    "Manually specify the Verkle fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
+	OverrideFeynman = &cli.Uint64Flag{
+		Name:     "override.feynman",
+		Usage:    "Manually specify the Feynman fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
+	OverrideFeynmanFix = &cli.Uint64Flag{
+		Name:  "override.feynmanfix",
+		Usage: "Manually specify the FeynmanFix fork timestamp, overriding the bundled setting",
+	}
 	OverrideFullImmutabilityThreshold = &cli.Uint64Flag{
 		Name:     "override.immutabilitythreshold",
 		Usage:    "It is the number of blocks after which a chain segment is considered immutable, only for testing purpose",
@@ -331,12 +340,6 @@ var (
 		Name:     "override.defaultextrareserve",
 		Usage:    "It adds more extra time for expired blobs for some request cases, only for testing purpose",
 		Value:    params.DefaultExtraReserveForBlobRequests,
-		Category: flags.EthCategory,
-	}
-	OverrideBreatheBlockInterval = &cli.Uint64Flag{
-		Name:     "override.breatheblockinterval",
-		Usage:    "It changes the interval between breathe blocks, only for testing purpose",
-		Value:    params.BreatheBlockInterval,
 		Category: flags.EthCategory,
 	}
 	SyncModeFlag = &flags.TextMarshalerFlag{
