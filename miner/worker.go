@@ -1196,7 +1196,7 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 
 			// do not build work if not register to the coinbase
 			if !w.bidder.isRegistered(coinbase) {
-				log.Warn("Refusing to mine with unregistered validator", "number", currentBlock.Number.Int64()+1g, "coinbase", coinbase)
+				log.Warn("Refusing to mine with unregistered validator", "number", currentBlock.Number.Int64()+1, "coinbase", coinbase)
 				return
 			}
 
