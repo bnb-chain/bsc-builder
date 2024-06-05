@@ -1187,7 +1187,8 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 		if w.bidder.enabled() {
 			var err error
 			// take the next in-turn validator as coinbase
-			coinbase, err = w.engine.NextInTurnValidator(w.chain, w.chain.CurrentBlock())
+			currentBlock := w.chain.CurrentBlock()
+			coinbase, err = w.engine.NextInTurnValidator(w.chain, currentBlock)
 			if err != nil {
 				log.Error("Failed to get next in-turn validator", "err", err)
 				return
@@ -1195,7 +1196,7 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 
 			// do not build work if not register to the coinbase
 			if !w.bidder.isRegistered(coinbase) {
-				log.Warn("Refusing to mine with unregistered validator")
+				log.Warn("Refusing to mine with unregistered validator", "number", currentBlock.Number.Int64(), "coinbase", coinbase)
 				return
 			}
 
