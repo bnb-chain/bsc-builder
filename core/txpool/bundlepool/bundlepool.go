@@ -81,6 +81,10 @@ type BundlePool struct {
 	simulator BundleSimulator
 }
 
+func (p *BundlePool) SetMaxGas(maxGas uint64) {
+
+}
+
 func New(config Config) *BundlePool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
