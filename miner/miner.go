@@ -18,7 +18,6 @@
 package miner
 
 import (
-	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -368,14 +367,12 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 		systemcontracts.UpgradeBuildInSystemContract(miner.worker.chainConfig, header.Number, parent.Time, header.Time, env.state)
 	}
 
-	s, err := miner.worker.simulateBundles(env, []*types.Bundle{bundle})
+	gasPool := prepareGasPool(env.header.GasLimit)
+	s, err := miner.worker.simulateBundle(env, bundle, state, gasPool, 0, true, true)
+
 	if err != nil {
 		return nil, err
 	}
 
-	if len(s) == 0 {
-		return nil, errors.New("no valid sim result")
-	}
-
-	return s[0].BundleGasPrice, nil
+	return s.BundleGasPrice, nil
 }
