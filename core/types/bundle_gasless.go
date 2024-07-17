@@ -1,8 +1,6 @@
 package types
 
 import (
-	"math/big"
-
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
@@ -13,7 +11,6 @@ type SimulateGaslessBundleArgs struct {
 type GaslessTx struct {
 	Index   int
 	GasUsed uint64
-	GasFee  *big.Int
 }
 
 type SimulateGaslessBundleResp struct {

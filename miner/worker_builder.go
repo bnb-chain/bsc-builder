@@ -516,28 +516,9 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 			continue
 		}
 
-		effectiveTip, er := tx.EffectiveGasTip(env.header.BaseFee)
-		if er != nil {
-			return nil, er
-		}
-
-		gasPrice := big.NewInt(effectiveTip.Int64())
-		if env.header.BaseFee != nil {
-			log.Info("simulate bundle: header base fee", "value", env.header.BaseFee.String())
-			gasPrice.Add(gasPrice, env.header.BaseFee)
-		}
-
-		gasFee := new(big.Int).Mul(new(big.Int).SetUint64(receipt.GasUsed), gasPrice)
-
-		if tx.Type() == types.BlobTxType {
-			blobFee := new(big.Int).Mul(new(big.Int).SetUint64(receipt.BlobGasUsed), receipt.BlobGasPrice)
-			gasFee.Add(gasFee, blobFee)
-		}
-
 		validTxs = append(validTxs, types.GaslessTx{
 			Index:   i,
 			GasUsed: receipt.GasUsed,
-			GasFee:  gasFee,
 		})
 
 		txIndx++
