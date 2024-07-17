@@ -495,6 +495,58 @@ func (w *worker) simulateBundle(
 	}, nil
 }
 
+func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error) {
+	validTxs := make([]types.GaslessTx, 0)
+
+	for i, tx := range bundle.Txs {
+		env.state.SetTxContext(tx.Hash(), i)
+
+		var (
+			snap = env.state.Snapshot()
+			gp   = env.gasPool.Gas()
+		)
+
+		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, env.gasPool, env.state, env.header, tx,
+			&env.header.GasUsed, *w.chain.GetVMConfig())
+		if err != nil {
+			env.state.RevertToSnapshot(snap)
+			env.gasPool.SetGas(gp)
+			log.Warn("fail to simulate gasless bundle, skipped", "txHash", tx.Hash(), "err", err)
+			continue
+		}
+
+		effectiveTip, er := tx.EffectiveGasTip(env.header.BaseFee)
+		if er != nil {
+			return nil, er
+		}
+
+		gasPrice := big.NewInt(effectiveTip.Int64())
+		if env.header.BaseFee != nil {
+			log.Info("simulate bundle: header base fee", "value", env.header.BaseFee.String())
+			gasPrice.Add(gasPrice, env.header.BaseFee)
+		}
+
+		gasFee := new(big.Int).Mul(new(big.Int).SetUint64(receipt.GasUsed), gasPrice)
+
+		if tx.Type() == types.BlobTxType {
+			blobFee := new(big.Int).Mul(new(big.Int).SetUint64(receipt.BlobGasUsed), receipt.BlobGasPrice)
+			gasFee.Add(gasFee, blobFee)
+		}
+
+		validTxs = append(validTxs, types.GaslessTx{
+			Hash:    tx.Hash(),
+			GasUsed: receipt.GasUsed,
+			GasFee:  gasFee,
+		})
+	}
+
+	return &types.SimulateGaslessBundleResp{
+		ValidTxs:         validTxs,
+		BasedBlockNumber: env.header.Number.Uint64(),
+	}, nil
+
+}
+
 func containsHash(arr []common.Hash, match common.Hash) bool {
 	for _, elem := range arr {
 		if elem == match {
