@@ -498,8 +498,9 @@ func (w *worker) simulateBundle(
 func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error) {
 	validTxs := make([]types.GaslessTx, 0)
 
+	txIndx := 0
 	for i, tx := range bundle.Txs {
-		env.state.SetTxContext(tx.Hash(), i)
+		env.state.SetTxContext(tx.Hash(), txIndx)
 
 		var (
 			snap = env.state.Snapshot()
@@ -534,10 +535,12 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 		}
 
 		validTxs = append(validTxs, types.GaslessTx{
-			Hash:    tx.Hash(),
+			Index:   i,
 			GasUsed: receipt.GasUsed,
 			GasFee:  gasFee,
 		})
+
+		txIndx++
 	}
 
 	return &types.SimulateGaslessBundleResp{
