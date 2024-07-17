@@ -1,6 +1,7 @@
 package types
 
 import (
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 )
 
@@ -10,6 +11,7 @@ type SimulateGaslessBundleArgs struct {
 
 type GaslessTx struct {
 	Index   int
+	Hash    common.Hash
 	GasUsed uint64
 }
 

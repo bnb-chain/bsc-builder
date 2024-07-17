@@ -518,6 +518,7 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 
 		validTxs = append(validTxs, types.GaslessTx{
 			Index:   i,
+			Hash:    tx.Hash(),
 			GasUsed: receipt.GasUsed,
 		})
 
