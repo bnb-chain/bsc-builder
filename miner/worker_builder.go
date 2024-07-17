@@ -448,6 +448,7 @@ func (w *worker) simulateBundle(
 			}
 
 			if env.header.BaseFee != nil {
+				log.Info("simulate bundle: header base fee", "value", env.header.BaseFee.String())
 				effectiveTip.Add(effectiveTip, env.header.BaseFee)
 			}
 
