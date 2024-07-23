@@ -9,13 +9,13 @@ type SimulateGaslessBundleArgs struct {
 	Txs []hexutil.Bytes `json:"txs"`
 }
 
-type GaslessTx struct {
+type GaslessTxSimResult struct {
 	Hash    common.Hash
 	GasUsed uint64
 	Valid   bool
 }
 
 type SimulateGaslessBundleResp struct {
-	Results          []GaslessTx
+	Results          []GaslessTxSimResult
 	BasedBlockNumber int64
 }

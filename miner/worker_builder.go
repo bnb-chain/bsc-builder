@@ -496,7 +496,7 @@ func (w *worker) simulateBundle(
 }
 
 func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error) {
-	result := make([]types.GaslessTx, 0)
+	result := make([]types.GaslessTxSimResult, 0)
 
 	txIdx := 0
 	for _, tx := range bundle.Txs {
@@ -519,7 +519,7 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 			txIdx++
 		}
 
-		result = append(result, types.GaslessTx{
+		result = append(result, types.GaslessTxSimResult{
 			Hash:    tx.Hash(),
 			GasUsed: receipt.GasUsed,
 			Valid:   valid,
