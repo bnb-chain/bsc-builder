@@ -309,6 +309,47 @@ func (miner *Miner) GasCeil() uint64 {
 
 func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 	parent := miner.eth.BlockChain().CurrentBlock()
+
+	parentState, err := miner.eth.BlockChain().StateAt(parent.Root)
+	if err != nil {
+		return nil, err
+	}
+
+	env, err := miner.prepareSimulationEnv(parent, parentState)
+	if err != nil {
+		return nil, err
+	}
+
+	s, err := miner.worker.simulateBundle(env, bundle, parentState, env.gasPool, 0, true, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.BundleGasPrice, nil
+}
+
+func (miner *Miner) SimulateGaslessBundle(bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error) {
+	parent := miner.eth.BlockChain().CurrentBlock()
+
+	parentState, err := miner.eth.BlockChain().StateAt(parent.Root)
+	if err != nil {
+		return nil, err
+	}
+
+	env, err := miner.prepareSimulationEnv(parent, parentState)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := miner.worker.simulateGaslessBundle(env, bundle)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func (miner *Miner) prepareSimulationEnv(parent *types.Header, state *state.StateDB) (*environment, error) {
 	timestamp := time.Now().Unix()
 	if parent.Time >= uint64(timestamp) {
 		timestamp = int64(parent.Time + 1)
@@ -351,15 +392,11 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 		// }
 	}
 
-	state, err := miner.eth.BlockChain().StateAt(parent.Root)
-	if err != nil {
-		return nil, err
-	}
-
 	env := &environment{
-		header: header,
-		state:  state.Copy(),
-		signer: types.MakeSigner(miner.worker.chainConfig, header.Number, header.Time),
+		header:  header,
+		state:   state.Copy(),
+		signer:  types.MakeSigner(miner.worker.chainConfig, header.Number, header.Time),
+		gasPool: prepareGasPool(header.GasLimit),
 	}
 
 	if !miner.worker.chainConfig.IsFeynman(header.Number, header.Time) {
@@ -367,12 +404,5 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 		systemcontracts.UpgradeBuildInSystemContract(miner.worker.chainConfig, header.Number, parent.Time, header.Time, env.state)
 	}
 
-	gasPool := prepareGasPool(env.header.GasLimit)
-	s, err := miner.worker.simulateBundle(env, bundle, state, gasPool, 0, true, true)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return s.BundleGasPrice, nil
+	return env, nil
 }

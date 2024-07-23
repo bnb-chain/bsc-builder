@@ -495,6 +495,44 @@ func (w *worker) simulateBundle(
 	}, nil
 }
 
+func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error) {
+	result := make([]types.GaslessTxSimResult, 0)
+
+	txIdx := 0
+	for _, tx := range bundle.Txs {
+		env.state.SetTxContext(tx.Hash(), txIdx)
+
+		var (
+			snap  = env.state.Snapshot()
+			gp    = env.gasPool.Gas()
+			valid = true
+		)
+
+		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, env.gasPool, env.state, env.header, tx,
+			&env.header.GasUsed, *w.chain.GetVMConfig())
+		if err != nil {
+			env.state.RevertToSnapshot(snap)
+			env.gasPool.SetGas(gp)
+			valid = false
+			log.Warn("fail to simulate gasless bundle, skipped", "txHash", tx.Hash(), "err", err)
+		} else {
+			txIdx++
+		}
+
+		result = append(result, types.GaslessTxSimResult{
+			Hash:    tx.Hash(),
+			GasUsed: receipt.GasUsed,
+			Valid:   valid,
+		})
+	}
+
+	return &types.SimulateGaslessBundleResp{
+		Results:          result,
+		BasedBlockNumber: env.header.Number.Int64(),
+	}, nil
+
+}
+
 func containsHash(arr []common.Hash, match common.Hash) bool {
 	for _, elem := range arr {
 		if elem == match {
