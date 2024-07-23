@@ -10,7 +10,6 @@ type SimulateGaslessBundleArgs struct {
 }
 
 type GaslessTx struct {
-	Index   int
 	Hash    common.Hash
 	GasUsed uint64
 	Valid   bool
