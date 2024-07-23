@@ -530,7 +530,6 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 		Results:          result,
 		BasedBlockNumber: env.header.Number.Int64(),
 	}, nil
-
 }
 
 func containsHash(arr []common.Hash, match common.Hash) bool {
