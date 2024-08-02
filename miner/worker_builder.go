@@ -515,7 +515,7 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 			env.state.RevertToSnapshot(snap)
 			env.gasPool.SetGas(gp)
 			valid = false
-			log.Info("fail to simulate gasless bundle, skipped", "txHash", tx.Hash(), "err", err)
+			log.Error("fail to simulate gasless tx, skipped", "hash", tx.Hash(), "err", err)
 		} else {
 			txIdx++
 		}

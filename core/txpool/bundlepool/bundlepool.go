@@ -138,7 +138,7 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 		return ErrBundleAlreadyExist
 	}
 	for p.slots+numSlots(bundle) > p.config.GlobalSlots {
-		p.drop() // deadlock
+		p.drop()
 	}
 	p.bundles[hash] = bundle
 	heap.Push(&p.bundleHeap, bundle)
