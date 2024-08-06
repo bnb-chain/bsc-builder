@@ -121,13 +121,14 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 		return ErrBundleTimestampTooHigh
 	}
 
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
 	price, err := p.simulator.SimulateBundle(bundle)
 	if err != nil {
 		return err
 	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if price.Cmp(p.minimalBundleGasPrice()) < 0 && p.slots+numSlots(bundle) > p.config.GlobalSlots {
 		return ErrBundleGasPriceLow
 	}
