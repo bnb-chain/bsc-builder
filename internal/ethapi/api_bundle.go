@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
 )
 
 const InvalidBundleParamError = -38000
@@ -23,6 +24,30 @@ func NewPrivateTxBundleAPI(b Backend) *PrivateTxBundleAPI {
 
 func (s *PrivateTxBundleAPI) BundlePrice(ctx context.Context) *big.Int {
 	return s.b.BundlePrice()
+}
+
+// SimulateGaslessBundle simulates the execution of a list of transactions with order
+func (s *PrivateTxBundleAPI) SimulateGaslessBundle(_ context.Context, args types.SimulateGaslessBundleArgs) (*types.SimulateGaslessBundleResp, error) {
+	if len(args.Txs) == 0 {
+		return nil, newBundleError(errors.New("bundle missing txs"))
+	}
+
+	var txs types.Transactions
+
+	for _, encodedTx := range args.Txs {
+		tx := new(types.Transaction)
+		if err := tx.UnmarshalBinary(encodedTx); err != nil {
+			log.Error("failed to unmarshal gasless tx", "err", err)
+			continue
+		}
+		txs = append(txs, tx)
+	}
+
+	bundle := &types.Bundle{
+		Txs: txs,
+	}
+
+	return s.b.SimulateGaslessBundle(bundle)
 }
 
 // SendBundle will add the signed transaction to the transaction pool.

@@ -361,7 +361,7 @@ func (ec *Client) TransactionInBlock(ctx context.Context, blockHash common.Hash,
 	return json.tx, err
 }
 
-// TransactionInBlock returns a single transaction at index in the given block.
+// TransactionsInBlock returns a single transaction at index in the given block.
 func (ec *Client) TransactionsInBlock(ctx context.Context, number *big.Int) ([]*types.Transaction, error) {
 	var rpcTxs []*rpcTransaction
 	err := ec.c.CallContext(ctx, &rpcTxs, "eth_getTransactionsByBlockNumber", toBlockNumArg(number))
@@ -376,7 +376,7 @@ func (ec *Client) TransactionsInBlock(ctx context.Context, number *big.Int) ([]*
 	return txs, err
 }
 
-// TransactionInBlock returns a single transaction at index in the given block.
+// TransactionRecipientsInBlock returns a single transaction at index in the given block.
 func (ec *Client) TransactionRecipientsInBlock(ctx context.Context, number *big.Int) ([]*types.Receipt, error) {
 	var rs []*types.Receipt
 	err := ec.c.CallContext(ctx, &rs, "eth_getTransactionReceiptsByBlockNumber", toBlockNumArg(number))
@@ -777,6 +777,16 @@ func (ec *Client) BestBidGasFee(ctx context.Context, parentHash common.Hash) (*b
 		return nil, err
 	}
 	return fee, nil
+}
+
+// SimulateGaslessBundle simulates a gasless bundle
+func (ec *Client) SimulateGaslessBundle(ctx context.Context, args types.SimulateGaslessBundleArgs) (*types.SimulateGaslessBundleResp, error) {
+	var bundle types.SimulateGaslessBundleResp
+	err := ec.c.CallContext(ctx, &bundle, "eth_simulateGaslessBundle", args)
+	if err != nil {
+		return nil, err
+	}
+	return &bundle, nil
 }
 
 // SendBundle sends a bundle
