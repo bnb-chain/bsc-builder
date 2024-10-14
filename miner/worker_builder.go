@@ -20,6 +20,8 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
+const smallBundleGas = 10 * params.TxGas
+
 var (
 	errNonRevertingTxInBundleFailed = errors.New("non-reverting tx in bundle failed")
 	errBundlePriceTooLow            = errors.New("bundle price too low")
@@ -350,7 +352,7 @@ func (w *worker) mergeBundles(
 
 	for _, bundle := range bundles {
 		// if we don't have enough gas for any further transactions then we're done
-		if gasPool.Gas() < params.TxGas {
+		if gasPool.Gas() < smallBundleGas {
 			break
 		}
 

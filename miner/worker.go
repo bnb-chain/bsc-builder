@@ -1017,7 +1017,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     new(big.Int).Add(parent.Number, common.Big1),
-		GasLimit:   core.CalcGasLimitForBuilder(w.config.GasCeil),
+		GasLimit:   core.CalcGasLimitForBuilder(parent.GasLimit, w.config.GasCeil),
 		Time:       timestamp,
 		Coinbase:   genParams.coinbase,
 	}
@@ -1033,7 +1033,8 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	if w.chainConfig.IsLondon(header.Number) {
 		header.BaseFee = eip1559.CalcBaseFee(w.chainConfig, parent)
 		if w.chainConfig.Parlia == nil && !w.chainConfig.IsLondon(parent.Number) {
-			header.GasLimit = core.CalcGasLimitForBuilder(w.config.GasCeil)
+			parentGasLimit := parent.GasLimit * w.chainConfig.ElasticityMultiplier()
+			header.GasLimit = core.CalcGasLimitForBuilder(parentGasLimit, w.config.GasCeil)
 		}
 	}
 	// Run the consensus preparation with the default or customized consensus engine.

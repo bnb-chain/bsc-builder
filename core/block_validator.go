@@ -264,9 +264,6 @@ func CalcGasLimit(parentGasLimit, desiredLimit uint64) uint64 {
 }
 
 // CalcGasLimitForBuilder computes the gas limit of the next block.
-func CalcGasLimitForBuilder(desiredLimit uint64) uint64 {
-	if desiredLimit < params.MinGasLimit {
-		desiredLimit = params.MinGasLimit
-	}
-	return desiredLimit
+func CalcGasLimitForBuilder(parentGasLimit, desiredLimit uint64) uint64 {
+	return CalcGasLimit(parentGasLimit, desiredLimit) / 2
 }
