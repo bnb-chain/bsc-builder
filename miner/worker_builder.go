@@ -349,6 +349,11 @@ func (w *worker) mergeBundles(
 	}
 
 	for _, bundle := range bundles {
+		// if we don't have enough gas for any further transactions then we're done
+		if gasPool.Gas() < params.TxGas {
+			break
+		}
+
 		prevState := currentState.Copy()
 		prevGasPool := new(core.GasPool).AddGas(gasPool.Gas())
 
