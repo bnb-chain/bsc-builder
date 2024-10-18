@@ -119,11 +119,7 @@ func (b *Bidder) mainLoop() {
 				betterBidBefore = bidutil.BidBetterBefore(parentHeader, b.chain.Config().Parlia.Period, b.delayLeftOver,
 					bidSimulationLeftOver)
 
-				if time.Now().After(betterBidBefore) {
-					timer.Reset(0)
-				} else {
-					timer.Reset(time.Until(betterBidBefore) / time.Duration(maxBid))
-				}
+				timer.Reset(0)
 			}
 			if bidNum < maxBid && b.isBestWork(work) {
 				// update the bestWork and do bid
@@ -278,7 +274,8 @@ func (b *Bidder) bid(work *environment) {
 	_, err := cli.SendBid(context.Background(), bidArgs)
 	if err != nil {
 		b.deleteBestWork(work)
-		log.Error("Bidder: bidding failed", "err", err, "number", work.header.Number, "txcount", len(work.txs), "unrevertible", len(work.UnRevertible))
+		log.Error("Bidder: bidding failed", "err", err, "number", work.header.Number, "txcount", len(work.txs),
+			"unrevertible", len(work.UnRevertible), "packing_duration", work.duration.Milliseconds())
 
 		var bidErr rpc.Error
 		ok := errors.As(err, &bidErr)
@@ -290,7 +287,8 @@ func (b *Bidder) bid(work *environment) {
 	}
 
 	b.deleteBestWork(work)
-	log.Info("Bidder: bidding success", "number", work.header.Number, "txs", len(work.txs))
+	log.Info("Bidder: bidding success", "number", work.header.Number, "txs", len(work.txs),
+		"packing_duration", work.duration.Milliseconds())
 }
 
 // isBestWork returns the work is better than the current best work

@@ -69,7 +69,7 @@ type Config struct {
 
 // DefaultConfig contains default settings for miner.
 var DefaultConfig = Config{
-	GasCeil:  30000000,
+	GasCeil:  0,
 	GasPrice: big.NewInt(params.GWei),
 
 	// The default recommit time is chosen as two seconds since
@@ -358,7 +358,7 @@ func (miner *Miner) prepareSimulationEnv(parent *types.Header, state *state.Stat
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     new(big.Int).Add(parent.Number, common.Big1),
-		GasLimit:   core.CalcGasLimit(parent.GasLimit, miner.worker.config.GasCeil),
+		GasLimit:   core.CalcGasLimitForBuilder(parent.GasLimit, miner.worker.config.GasCeil),
 		Extra:      miner.worker.extra,
 		Time:       uint64(timestamp),
 		Coinbase:   miner.worker.etherbase(),

@@ -69,6 +69,12 @@ const (
 
 	// the default to wait for the mev miner to finish
 	waitMEVMinerEndTimeLimit = 50 * time.Millisecond
+
+	// Reserve block size for the following 3 components:
+	// a. System transactions at the end of the block
+	// b. Seal in the block header
+	// c. Overhead from RLP encoding
+	blockReserveSize = 100 * 1024
 )
 
 var (
@@ -88,6 +94,7 @@ type environment struct {
 	signer   types.Signer
 	state    *state.StateDB // apply state changes here
 	tcount   int            // tx count in cycle
+	size     uint32         // almost accurate block size,
 	gasPool  *core.GasPool  // available gas used to pack transactions
 	coinbase common.Address
 
@@ -99,6 +106,7 @@ type environment struct {
 
 	profit       *big.Int // block gas fee + BNBSentToSystem
 	UnRevertible []common.Hash
+	duration     time.Duration
 }
 
 // copy creates a deep copy of environment.
@@ -107,6 +115,7 @@ func (env *environment) copy() *environment {
 		signer:   env.signer,
 		state:    env.state.Copy(),
 		tcount:   env.tcount,
+		size:     env.size,
 		coinbase: env.coinbase,
 		header:   types.CopyHeader(env.header),
 		receipts: copyReceipts(env.receipts),
@@ -921,6 +930,13 @@ LOOP:
 			txs.Pop()
 			continue
 		}
+		// If we don't have enough size left for the next transaction, skip it.
+		if env.size+uint32(tx.Size())+blockReserveSize > params.MaxMessageSize {
+			log.Trace("Not enough size left for transaction", "hash", ltx.Hash,
+				"env.size", env.size, "needed", uint32(tx.Size()))
+			txs.Pop()
+			continue
+		}
 		// Error may be ignored here. The error has already been checked
 		// during transaction acceptance is the transaction pool.
 		from, _ := types.Sender(env.signer, tx)
@@ -946,6 +962,7 @@ LOOP:
 			// Everything ok, collect the logs and shift in the next transaction from the same account
 			coalescedLogs = append(coalescedLogs, logs...)
 			env.tcount++
+			env.size += uint32(tx.Size()) // size of BlobTxSidecar included
 			txs.Shift()
 
 		default:
@@ -1016,7 +1033,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     new(big.Int).Add(parent.Number, common.Big1),
-		GasLimit:   core.CalcGasLimit(parent.GasLimit, w.config.GasCeil),
+		GasLimit:   core.CalcGasLimitForBuilder(parent.GasLimit, w.config.GasCeil),
 		Time:       timestamp,
 		Coinbase:   genParams.coinbase,
 	}
@@ -1033,7 +1050,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		header.BaseFee = eip1559.CalcBaseFee(w.chainConfig, parent)
 		if w.chainConfig.Parlia == nil && !w.chainConfig.IsLondon(parent.Number) {
 			parentGasLimit := parent.GasLimit * w.chainConfig.ElasticityMultiplier()
-			header.GasLimit = core.CalcGasLimit(parentGasLimit, w.config.GasCeil)
+			header.GasLimit = core.CalcGasLimitForBuilder(parentGasLimit, w.config.GasCeil)
 		}
 	}
 	// Run the consensus preparation with the default or customized consensus engine.
@@ -1081,6 +1098,9 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
 		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, vmenv, env.state)
 	}
+
+	env.size = uint32(env.header.Size())
+
 	return env, nil
 }
 
@@ -1311,6 +1331,7 @@ LOOP:
 		fillStart := time.Now()
 		err = w.fillTransactionsAndBundles(interruptCh, work, stopTimer)
 		fillDuration := time.Since(fillStart)
+		work.duration = fillDuration
 		switch {
 		case errors.Is(err, errBlockInterruptedByNewHead):
 			// work.discard()
