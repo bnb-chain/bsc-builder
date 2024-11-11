@@ -362,6 +362,13 @@ func (miner *Miner) prepareSimulationEnv(parent *types.Header, state *state.Stat
 		return nil, err
 	}
 
+	// set validator to the consensus engine
+	if posa, ok := miner.worker.engine.(consensus.PoSA); ok {
+		posa.SetValidator(coinbase)
+	} else {
+		log.Warn("Consensus engine does not support validator setting")
+	}
+
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     new(big.Int).Add(parent.Number, common.Big1),
