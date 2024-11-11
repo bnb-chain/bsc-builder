@@ -366,7 +366,8 @@ func (miner *Miner) prepareSimulationEnv(parent *types.Header, state *state.Stat
 	if posa, ok := miner.worker.engine.(consensus.PoSA); ok {
 		posa.SetValidator(coinbase)
 	} else {
-		log.Warn("Consensus engine does not support validator setting")
+		log.Error("Consensus engine does not support validator setting")
+		return nil, err
 	}
 
 	header := &types.Header{
