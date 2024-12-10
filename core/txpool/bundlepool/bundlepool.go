@@ -83,10 +83,10 @@ type BundlePool struct {
 	bundleMetricsMu sync.RWMutex
 
 	simulator  BundleSimulator
-	blockchain *core.BlockChain
+	blockchain BlockChain
 }
 
-func New(config Config) *BundlePool {
+func New(config Config, chain BlockChain) *BundlePool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
 
@@ -94,6 +94,7 @@ func New(config Config) *BundlePool {
 		config:     config,
 		bundles:    make(map[common.Hash]*types.Bundle),
 		bundleHeap: make(BundleHeap, 0),
+		blockchain: chain,
 	}
 
 	go pool.clearLoop()
@@ -108,7 +109,7 @@ func (p *BundlePool) clearLoop() Config {
 	for {
 		select {
 		case <-ticker.C:
-			least := p.blockchain.CurrentHeader().Number.Int64()
+			least := p.blockchain.CurrentBlock().Number.Int64()
 			for number, _ := range p.bundleMetrics {
 				if number < least {
 					least = number
@@ -179,7 +180,7 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 	slotsGauge.Update(int64(p.slots))
 
 	p.bundleMetricsMu.Lock()
-	currentHeaderNumber := p.blockchain.CurrentHeader().Number.Int64()
+	currentHeaderNumber := p.blockchain.CurrentBlock().Number.Int64()
 	if _, ok := p.bundleMetrics[currentHeaderNumber]; ok {
 		p.bundleMetrics[currentHeaderNumber] = append(p.bundleMetrics[currentHeaderNumber], bundle)
 	} else {
