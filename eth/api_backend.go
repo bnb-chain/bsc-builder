@@ -330,6 +330,10 @@ func (b *EthAPIBackend) BundlePrice() *big.Int {
 	return bundles[idx].Price
 }
 
+func (b *EthAPIBackend) Bundles(_ context.Context, fromBlock, toBlock int64) map[int64][]*types.Bundle {
+	return b.eth.txPool.BundleMetrics(fromBlock, toBlock)
+}
+
 func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {
 	pending := b.eth.txPool.Pending(txpool.PendingFilter{})
 	var txs types.Transactions

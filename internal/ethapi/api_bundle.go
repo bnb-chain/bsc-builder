@@ -6,8 +6,10 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const InvalidBundleParamError = -38000
@@ -140,4 +142,51 @@ type bundleError struct {
 // See: https://github.com/ethereum/wiki/wiki/JSON-RPC-Error-Codes-Improvement-Proposal
 func (e *bundleError) ErrorCode() int {
 	return InvalidBundleParamError
+}
+
+// Bundles returns the bundles in the given block range
+func (s *PrivateTxBundleAPI) Bundles(ctx context.Context, args types.BundlesArgs) ([]*types.BundlesItem, error) {
+	if args.FromBlock == nil {
+		return nil, newBundleError(errors.New("the fromBlock is required"))
+	}
+
+	if args.FromBlock.Int64() <= 0 {
+		return nil, newBundleError(errors.New("the fromBlock must be hex value number and greater than 0"))
+	}
+
+	fromBlock := args.FromBlock.Int64()
+
+	var toBlock int64
+	if args.ToBlock == nil || *args.ToBlock == rpc.LatestBlockNumber || *args.ToBlock == rpc.PendingBlockNumber {
+		toBlock = s.b.CurrentHeader().Number.Int64()
+	} else {
+		toBlock = args.ToBlock.Int64()
+	}
+
+	if toBlock < fromBlock || toBlock >= fromBlock+types.MaxBundleAliveBlock {
+		return nil, newBundleError(errors.New("the toBlock must be greater than fromBlock and less than fromBlock + 100"))
+	}
+
+	bundleMetrics := s.b.Bundles(ctx, fromBlock, toBlock)
+
+	ret := make([]*types.BundlesItem, 0)
+
+	for number, bundles := range bundleMetrics {
+		bundleTxHashes := make([][]common.Hash, 0)
+
+		for _, bundle := range bundles {
+			txHashes := make([]common.Hash, 0)
+			for _, tx := range bundle.Txs {
+				txHashes = append(txHashes, tx.Hash())
+			}
+			bundleTxHashes = append(bundleTxHashes, txHashes)
+		}
+
+		ret = append(ret, &types.BundlesItem{
+			ReceivedBlock: hexutil.Uint64(number),
+			Bundles:       bundleTxHashes,
+		})
+	}
+
+	return ret, nil
 }
