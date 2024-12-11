@@ -102,27 +102,23 @@ func New(config Config, chain BlockChain) *BundlePool {
 	return pool
 }
 
-func (p *BundlePool) clearLoop() Config {
+func (p *BundlePool) clearLoop() {
 	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
-	for {
-		select {
-		case <-ticker.C:
-			least := p.blockchain.CurrentBlock().Number.Int64()
-			for number, _ := range p.bundleMetrics {
-				if number < least {
-					least = number
-				}
-			}
-
-			for len(p.bundleMetrics) > types.MaxBundleAliveBlock {
-				delete(p.bundleMetrics, least)
-				least++
+	for range ticker.C {
+		least := p.blockchain.CurrentBlock().Number.Int64()
+		for number := range p.bundleMetrics {
+			if number < least {
+				least = number
 			}
 		}
-	}
 
+		for len(p.bundleMetrics) > types.MaxBundleAliveBlock {
+			delete(p.bundleMetrics, least)
+			least++
+		}
+	}
 }
 
 func (p *BundlePool) SetBundleSimulator(simulator BundleSimulator) {
@@ -181,11 +177,7 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 
 	p.bundleMetricsMu.Lock()
 	currentHeaderNumber := p.blockchain.CurrentBlock().Number.Int64()
-	if _, ok := p.bundleMetrics[currentHeaderNumber]; ok {
-		p.bundleMetrics[currentHeaderNumber] = append(p.bundleMetrics[currentHeaderNumber], bundle)
-	} else {
-		p.bundleMetrics[currentHeaderNumber] = []*types.Bundle{bundle}
-	}
+	p.bundleMetrics[currentHeaderNumber] = append(p.bundleMetrics[currentHeaderNumber], bundle)
 	p.bundleMetricsMu.Unlock()
 
 	return nil

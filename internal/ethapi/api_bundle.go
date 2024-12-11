@@ -144,30 +144,32 @@ func (e *bundleError) ErrorCode() int {
 	return InvalidBundleParamError
 }
 
-// Bundles returns the bundles in the given block range
-func (s *PrivateTxBundleAPI) Bundles(ctx context.Context, args types.BundlesArgs) ([]*types.BundlesItem, error) {
-	if args.FromBlock == nil {
+// Bundles returns the bundles in the given block range.
+// fromBlock is beginning of the queried range, must be the hex value of a block number,
+// toBlock   is end of the range, nil means latest block.
+func (s *PrivateTxBundleAPI) Bundles(ctx context.Context, fromBlock, toBlock *rpc.BlockNumber) ([]*types.BundlesItem, error) {
+	if fromBlock == nil {
 		return nil, newBundleError(errors.New("the fromBlock is required"))
 	}
 
-	if args.FromBlock.Int64() <= 0 {
+	if fromBlock.Int64() <= 0 {
 		return nil, newBundleError(errors.New("the fromBlock must be hex value number and greater than 0"))
 	}
 
-	fromBlock := args.FromBlock.Int64()
+	from := fromBlock.Int64()
 
-	var toBlock int64
-	if args.ToBlock == nil || *args.ToBlock == rpc.LatestBlockNumber || *args.ToBlock == rpc.PendingBlockNumber {
-		toBlock = s.b.CurrentHeader().Number.Int64()
+	var to int64
+	if toBlock == nil || *toBlock == rpc.LatestBlockNumber || *toBlock == rpc.PendingBlockNumber {
+		to = s.b.CurrentHeader().Number.Int64()
 	} else {
-		toBlock = args.ToBlock.Int64()
+		to = toBlock.Int64()
 	}
 
-	if toBlock < fromBlock || toBlock >= fromBlock+types.MaxBundleAliveBlock {
+	if to < from || to >= from+types.MaxBundleAliveBlock {
 		return nil, newBundleError(errors.New("the toBlock must be greater than fromBlock and less than fromBlock + 100"))
 	}
 
-	bundleMetrics := s.b.Bundles(ctx, fromBlock, toBlock)
+	bundleMetrics := s.b.Bundles(ctx, from, to)
 
 	ret := make([]*types.BundlesItem, 0)
 

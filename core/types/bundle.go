@@ -7,7 +7,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const (
@@ -70,11 +69,6 @@ func (bundle *Bundle) Hash() common.Hash {
 	h := rlpHash(bundle)
 	bundle.hash.Store(h)
 	return h
-}
-
-type BundlesArgs struct {
-	FromBlock *rpc.BlockNumber // beginning of the queried range, must be the hex value of a block number
-	ToBlock   *rpc.BlockNumber // end of the range, nil means latest block
 }
 
 type BundlesItem struct {
