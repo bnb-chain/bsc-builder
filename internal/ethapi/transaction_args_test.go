@@ -394,7 +394,7 @@ func (b *backendMock) SimulateGaslessBundle(bundle *types.Bundle) (*types.Simula
 	panic("implement me")
 }
 func (b *backendMock) BundlePrice() *big.Int { return nil }
-func (b *backendMock) Bundles(ctx context.Context, fromBlock, toBlock int64) map[int64][]*types.Bundle {
+func (b *backendMock) Bundles(ctx context.Context, fromBlock, toBlock int64) []*types.BundlesItem {
 	panic("implement me")
 }
 func (b *backendMock) GetTransaction(ctx context.Context, txHash common.Hash) (bool, *types.Transaction, common.Hash, uint64, uint64, error) {

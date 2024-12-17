@@ -71,6 +71,14 @@ func (bundle *Bundle) Hash() common.Hash {
 	return h
 }
 
+func (bundle *Bundle) TxHashes() []common.Hash {
+	hashes := make([]common.Hash, len(bundle.Txs))
+	for i, tx := range bundle.Txs {
+		hashes[i] = tx.Hash()
+	}
+	return hashes
+}
+
 type BundlesItem struct {
 	ReceivedBlock hexutil.Uint64
 	Bundles       [][]common.Hash

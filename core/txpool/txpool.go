@@ -371,7 +371,7 @@ func (p *TxPool) AddBundle(bundle *types.Bundle) error {
 }
 
 // BundleMetrics returns the metrics of the bundle subpool
-func (p *TxPool) BundleMetrics(fromBlock, toBlock int64) (ret map[int64][]*types.Bundle) {
+func (p *TxPool) BundleMetrics(fromBlock, toBlock int64) (ret map[int64][][]common.Hash) {
 	for _, subpool := range p.subpools {
 		if bundleSubpool, ok := subpool.(BundleSubpool); ok {
 			return bundleSubpool.BundleMetrics(fromBlock, toBlock)

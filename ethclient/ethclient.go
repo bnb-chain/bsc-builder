@@ -809,7 +809,7 @@ func (ec *Client) BundlePrice(ctx context.Context) *big.Int {
 // Bundles returns the bundles in the given block range
 func (ec *Client) Bundles(ctx context.Context, fromBlock, toBlock *rpc.BlockNumber) ([]*types.BundlesItem, error) {
 	var items []*types.BundlesItem
-	err := ec.c.CallContext(ctx, &items, "eth_queryBundles", fromBlock, toBlock)
+	err := ec.c.CallContext(ctx, &items, "eth_Bundles", fromBlock, toBlock)
 	if err != nil {
 		return nil, err
 	}

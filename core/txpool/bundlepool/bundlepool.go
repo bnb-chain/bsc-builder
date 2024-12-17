@@ -79,7 +79,7 @@ type BundlePool struct {
 	slots uint64 // Number of slots currently allocated
 
 	// bundleMetrics for mev data analyst
-	bundleMetrics   map[int64][]*types.Bundle // receivedBlockNumber -> bundle
+	bundleMetrics   map[int64][][]common.Hash // receivedBlockNumber -> [[bundle tx hashes],[bundle tx hashes]...]
 	bundleMetricsMu sync.RWMutex
 
 	simulator  BundleSimulator
@@ -107,16 +107,12 @@ func (p *BundlePool) clearLoop() {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		least := p.blockchain.CurrentBlock().Number.Int64()
-		for number := range p.bundleMetrics {
-			if number < least {
-				least = number
-			}
-		}
+		currentNumber := p.blockchain.CurrentBlock().Number.Int64()
 
-		for len(p.bundleMetrics) > types.MaxBundleAliveBlock {
-			delete(p.bundleMetrics, least)
-			least++
+		for number := range p.bundleMetrics {
+			if number <= currentNumber-types.MaxBundleAliveBlock {
+				delete(p.bundleMetrics, number)
+			}
 		}
 	}
 }
@@ -177,13 +173,13 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 
 	p.bundleMetricsMu.Lock()
 	currentHeaderNumber := p.blockchain.CurrentBlock().Number.Int64()
-	p.bundleMetrics[currentHeaderNumber] = append(p.bundleMetrics[currentHeaderNumber], bundle)
+	p.bundleMetrics[currentHeaderNumber] = append(p.bundleMetrics[currentHeaderNumber], bundle.TxHashes())
 	p.bundleMetricsMu.Unlock()
 
 	return nil
 }
 
-func (p *BundlePool) BundleMetrics(fromBlock, toBlock int64) (ret map[int64][]*types.Bundle) {
+func (p *BundlePool) BundleMetrics(fromBlock, toBlock int64) (ret map[int64][][]common.Hash) {
 	p.bundleMetricsMu.RLock()
 	defer p.bundleMetricsMu.RUnlock()
 

@@ -190,5 +190,5 @@ type BundleSubpool interface {
 	PruneBundle(hash common.Hash)
 
 	// BundleMetrics queries the metrics in the bundle pool.
-	BundleMetrics(fromBlock, toBlock int64) map[int64][]*types.Bundle
+	BundleMetrics(fromBlock, toBlock int64) map[int64][][]common.Hash
 }

@@ -6,7 +6,6 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -165,30 +164,13 @@ func (s *PrivateTxBundleAPI) Bundles(ctx context.Context, fromBlock, toBlock *rp
 		to = toBlock.Int64()
 	}
 
+	if to > s.b.CurrentHeader().Number.Int64() {
+		return nil, newBundleError(errors.New("the toBlock must be no more than the latest block number"))
+	}
+
 	if to < from || to >= from+types.MaxBundleAliveBlock {
 		return nil, newBundleError(errors.New("the toBlock must be greater than fromBlock and less than fromBlock + 100"))
 	}
 
-	bundleMetrics := s.b.Bundles(ctx, from, to)
-
-	ret := make([]*types.BundlesItem, 0)
-
-	for number, bundles := range bundleMetrics {
-		bundleTxHashes := make([][]common.Hash, 0)
-
-		for _, bundle := range bundles {
-			txHashes := make([]common.Hash, 0)
-			for _, tx := range bundle.Txs {
-				txHashes = append(txHashes, tx.Hash())
-			}
-			bundleTxHashes = append(bundleTxHashes, txHashes)
-		}
-
-		ret = append(ret, &types.BundlesItem{
-			ReceivedBlock: hexutil.Uint64(number),
-			Bundles:       bundleTxHashes,
-		})
-	}
-
-	return ret, nil
+	return s.b.Bundles(ctx, from, to), nil
 }
