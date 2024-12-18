@@ -111,7 +111,9 @@ func (p *BundlePool) clearLoop() {
 
 		for number := range p.bundleMetrics {
 			if number <= currentNumber-types.MaxBundleAliveBlock {
+				p.bundleMetricsMu.Lock()
 				delete(p.bundleMetrics, number)
+				p.bundleMetricsMu.Unlock()
 			}
 		}
 	}
