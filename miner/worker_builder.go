@@ -413,13 +413,14 @@ func (w *worker) simulateBundle(
 		ethSentToSystem = new(big.Int)
 	)
 
-	currentState := state.Copy()
+	txsLen := len(bundle.Txs)
+	for i := 0; i < txsLen; i++ {
+		tx := bundle.Txs[i]
 
-	for i, tx := range bundle.Txs {
 		state.SetTxContext(tx.Hash(), i+currentTxCount)
 		sysBalanceBefore := state.GetBalance(consensus.SystemAddress)
 
-		prevState := currentState.Copy()
+		prevState := state.Copy()
 		prevGasPool := new(core.GasPool).AddGas(gasPool.Gas())
 
 		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, env.header, tx,
@@ -432,6 +433,8 @@ func (w *worker) simulateBundle(
 				state = prevState
 				gasPool = prevGasPool
 				bundle.Txs = bundle.Txs.Remove(i)
+				txsLen = len(bundle.Txs)
+				i--
 				continue
 			}
 
@@ -454,6 +457,8 @@ func (w *worker) simulateBundle(
 				state = prevState
 				gasPool = prevGasPool
 				bundle.Txs = bundle.Txs.Remove(i)
+				txsLen = len(bundle.Txs)
+				i--
 				continue
 			}
 
