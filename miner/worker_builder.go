@@ -420,8 +420,8 @@ func (w *worker) simulateBundle(
 		state.SetTxContext(tx.Hash(), i+currentTxCount)
 		sysBalanceBefore := state.GetBalance(consensus.SystemAddress)
 
-		prevState := state.Copy()
-		prevGasPool := new(core.GasPool).AddGas(gasPool.Gas())
+		snap := state.Snapshot()
+		gp := gasPool.Gas()
 
 		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, env.header, tx,
 			&tempGasUsed, *w.chain.GetVMConfig())
@@ -430,8 +430,8 @@ func (w *worker) simulateBundle(
 
 			if containsHash(bundle.DroppingTxHashes, tx.Hash()) {
 				log.Warn("drop tx in bundle", "hash", tx.Hash().String())
-				state = prevState
-				gasPool = prevGasPool
+				state.RevertToSnapshot(snap)
+				gasPool.SetGas(gp)
 				bundle.Txs = bundle.Txs.Remove(i)
 				txsLen = len(bundle.Txs)
 				i--
@@ -454,8 +454,8 @@ func (w *worker) simulateBundle(
 			// for unRevertible tx but itself can be dropped, we drop it and revert the state and gas pool
 			if containsHash(bundle.DroppingTxHashes, receipt.TxHash) {
 				log.Warn("drop tx in bundle", "hash", receipt.TxHash.String())
-				state = prevState
-				gasPool = prevGasPool
+				state.RevertToSnapshot(snap)
+				gasPool.SetGas(gp)
 				bundle.Txs = bundle.Txs.Remove(i)
 				txsLen = len(bundle.Txs)
 				i--
