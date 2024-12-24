@@ -454,8 +454,7 @@ func (w *worker) simulateBundle(
 			// for unRevertible tx but itself can be dropped, we drop it and revert the state and gas pool
 			if containsHash(bundle.DroppingTxHashes, receipt.TxHash) {
 				log.Warn("drop tx in bundle", "hash", receipt.TxHash.String())
-				state.RevertToSnapshot(snap)
-				gasPool.SetGas(gp)
+				// do not need to revert the state and gas pool for they are already reverted in ApplyTransaction
 				bundle.Txs = bundle.Txs.Remove(i)
 				txsLen = len(bundle.Txs)
 				i--
