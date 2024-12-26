@@ -19,11 +19,11 @@ package core
 import (
 	"crypto/ecdsa"
 	"errors"
+	"math"
 	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -48,27 +48,27 @@ func u64(val uint64) *uint64 { return &val }
 func TestStateProcessorErrors(t *testing.T) {
 	var (
 		config = &params.ChainConfig{
-			ChainID:                       big.NewInt(1),
-			HomesteadBlock:                big.NewInt(0),
-			EIP150Block:                   big.NewInt(0),
-			EIP155Block:                   big.NewInt(0),
-			EIP158Block:                   big.NewInt(0),
-			ByzantiumBlock:                big.NewInt(0),
-			ConstantinopleBlock:           big.NewInt(0),
-			PetersburgBlock:               big.NewInt(0),
-			IstanbulBlock:                 big.NewInt(0),
-			MuirGlacierBlock:              big.NewInt(0),
-			MirrorSyncBlock:               big.NewInt(0),
-			BrunoBlock:                    big.NewInt(0),
-			EulerBlock:                    big.NewInt(0),
-			BerlinBlock:                   big.NewInt(0),
-			LondonBlock:                   big.NewInt(0),
-			GibbsBlock:                    big.NewInt(0),
-			Ethash:                        new(params.EthashConfig),
-			TerminalTotalDifficulty:       big.NewInt(0),
-			TerminalTotalDifficultyPassed: true,
-			ShanghaiTime:                  new(uint64),
-			CancunTime:                    new(uint64),
+			ChainID:                 big.NewInt(1),
+			HomesteadBlock:          big.NewInt(0),
+			EIP150Block:             big.NewInt(0),
+			EIP155Block:             big.NewInt(0),
+			EIP158Block:             big.NewInt(0),
+			ByzantiumBlock:          big.NewInt(0),
+			ConstantinopleBlock:     big.NewInt(0),
+			PetersburgBlock:         big.NewInt(0),
+			IstanbulBlock:           big.NewInt(0),
+			MuirGlacierBlock:        big.NewInt(0),
+			MirrorSyncBlock:         big.NewInt(0),
+			BrunoBlock:              big.NewInt(0),
+			EulerBlock:              big.NewInt(0),
+			BerlinBlock:             big.NewInt(0),
+			LondonBlock:             big.NewInt(0),
+			GibbsBlock:              big.NewInt(0),
+			Ethash:                  new(params.EthashConfig),
+			TerminalTotalDifficulty: big.NewInt(0),
+			ShanghaiTime:            new(uint64),
+			CancunTime:              new(uint64),
+			PragueTime:              new(uint64),
 		}
 		signer  = types.LatestSigner(config)
 		key1, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
@@ -110,6 +110,21 @@ func TestStateProcessorErrors(t *testing.T) {
 			BlobHashes: hashes,
 			BlobFeeCap: uint256.MustFromBig(blobGasFeeCap),
 			Value:      new(uint256.Int),
+		}), signer, key1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return tx
+	}
+	var mkSetCodeTx = func(nonce uint64, to common.Address, gasLimit uint64, gasTipCap, gasFeeCap *big.Int, authlist []types.Authorization) *types.Transaction {
+		tx, err := types.SignTx(types.NewTx(&types.SetCodeTx{
+			Nonce:     nonce,
+			GasTipCap: uint256.MustFromBig(gasTipCap),
+			GasFeeCap: uint256.MustFromBig(gasFeeCap),
+			Gas:       gasLimit,
+			To:        to,
+			Value:     new(uint256.Int),
+			AuthList:  authlist,
 		}), signer, key1)
 		if err != nil {
 			t.Fatal(err)
@@ -257,8 +272,15 @@ func TestStateProcessorErrors(t *testing.T) {
 				},
 				want: "could not apply tx 0 [0x6c11015985ce82db691d7b2d017acda296db88b811c3c60dc71449c76256c716]: max fee per gas less than block base fee: address 0x71562b71999873DB5b286dF957af199Ec94617F7, maxFeePerGas: 1, baseFee: 875000000",
 			},
+			{ // ErrEmptyAuthList
+				txs: []*types.Transaction{
+					mkSetCodeTx(0, common.Address{}, params.TxGas, big.NewInt(params.InitialBaseFee), big.NewInt(params.InitialBaseFee), nil),
+				},
+				want: "could not apply tx 0 [0xc18d10f4c809dbdfa1a074c3300de9bc4b7f16a20f0ec667f6f67312b71b956a]: EIP-7702 transaction with empty auth list (sender 0x71562b71999873DB5b286dF957af199Ec94617F7)",
+			},
+			// ErrSetCodeTxCreate cannot be tested: it is impossible to create a SetCode-tx with nil `to`.
 		} {
-			block := GenerateBadBlock(gspec.ToBlock(), beacon.New(ethash.NewFaker()), tt.txs, gspec.Config)
+			block := GenerateBadBlock(gspec.ToBlock(), beacon.New(ethash.NewFaker()), tt.txs, gspec.Config, false)
 			_, err := blockchain.InsertChain(types.Blocks{block})
 			if err == nil {
 				t.Fatal("block imported without errors")
@@ -307,7 +329,7 @@ func TestStateProcessorErrors(t *testing.T) {
 				want: types.ErrTxTypeNotSupported,
 			},
 		} {
-			block := GenerateBadBlock(gspec.ToBlock(), ethash.NewFaker(), tt.txs, gspec.Config)
+			block := GenerateBadBlock(gspec.ToBlock(), ethash.NewFaker(), tt.txs, gspec.Config, true)
 			_, err := blockchain.InsertChain(types.Blocks{block})
 			if err == nil {
 				t.Fatal("block imported without errors")
@@ -343,10 +365,10 @@ func TestStateProcessorErrors(t *testing.T) {
 				txs: []*types.Transaction{
 					mkDynamicTx(0, common.Address{}, params.TxGas-1000, big.NewInt(0), big.NewInt(0)),
 				},
-				want: "could not apply tx 0 [0x88626ac0d53cb65308f2416103c62bb1f18b805573d4f96a3640bbbfff13c14f]: sender not an eoa: address 0x71562b71999873DB5b286dF957af199Ec94617F7, codehash: 0x9280914443471259d4570a8661015ae4a5b80186dbc619658fb494bebc3da3d1",
+				want: "could not apply tx 0 [0x88626ac0d53cb65308f2416103c62bb1f18b805573d4f96a3640bbbfff13c14f]: sender not an eoa: address 0x71562b71999873DB5b286dF957af199Ec94617F7, len(code): 4",
 			},
 		} {
-			block := GenerateBadBlock(gspec.ToBlock(), beacon.New(ethash.NewFaker()), tt.txs, gspec.Config)
+			block := GenerateBadBlock(gspec.ToBlock(), beacon.New(ethash.NewFaker()), tt.txs, gspec.Config, false)
 			_, err := blockchain.InsertChain(types.Blocks{block})
 			if err == nil {
 				t.Fatal("block imported without errors")
@@ -362,9 +384,9 @@ func TestStateProcessorErrors(t *testing.T) {
 // valid, and no proper post-state can be made. But from the perspective of the blockchain, the block is sufficiently
 // valid to be considered for import:
 // - valid pow (fake), ancestry, difficulty, gaslimit etc
-func GenerateBadBlock(parent *types.Block, engine consensus.Engine, txs types.Transactions, config *params.ChainConfig) *types.Block {
+func GenerateBadBlock(parent *types.Block, engine consensus.Engine, txs types.Transactions, config *params.ChainConfig, isPOW bool) *types.Block {
 	difficulty := big.NewInt(0)
-	if !config.TerminalTotalDifficultyPassed {
+	if isPOW {
 		fakeChainReader := newChainMaker(nil, config, engine)
 		difficulty = engine.CalcDifficulty(fakeChainReader, parent.Time()+10, &types.Header{
 			Number:     parent.Number(),
@@ -424,8 +446,9 @@ func GenerateBadBlock(parent *types.Block, engine consensus.Engine, txs types.Tr
 		}
 	}
 	// Assemble and return the final block for sealing
+	body := &types.Body{Transactions: txs}
 	if config.IsShanghai(header.Number, header.Time) {
-		return types.NewBlockWithWithdrawals(header, txs, nil, receipts, []*types.Withdrawal{}, trie.NewStackTrie(nil))
+		body.Withdrawals = []*types.Withdrawal{}
 	}
-	return types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil))
+	return types.NewBlock(header, body, receipts, trie.NewStackTrie(nil))
 }

@@ -413,25 +413,27 @@ func (w *worker) simulateBundle(
 		ethSentToSystem = new(big.Int)
 	)
 
-	currentState := state.Copy()
+	txsLen := len(bundle.Txs)
+	for i := 0; i < txsLen; i++ {
+		tx := bundle.Txs[i]
 
-	for i, tx := range bundle.Txs {
 		state.SetTxContext(tx.Hash(), i+currentTxCount)
 		sysBalanceBefore := state.GetBalance(consensus.SystemAddress)
 
-		prevState := currentState.Copy()
-		prevGasPool := new(core.GasPool).AddGas(gasPool.Gas())
+		snap := state.Snapshot()
+		gp := gasPool.Gas()
 
-		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, env.header, tx,
-			&tempGasUsed, *w.chain.GetVMConfig())
+		receipt, err := core.ApplyTransaction(env.evm, gasPool, state, env.header, tx, &tempGasUsed)
 		if err != nil {
 			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
 
 			if containsHash(bundle.DroppingTxHashes, tx.Hash()) {
 				log.Warn("drop tx in bundle", "hash", tx.Hash().String())
-				state = prevState
-				gasPool = prevGasPool
+				state.RevertToSnapshot(snap)
+				gasPool.SetGas(gp)
 				bundle.Txs = bundle.Txs.Remove(i)
+				txsLen = len(bundle.Txs)
+				i--
 				continue
 			}
 
@@ -451,9 +453,10 @@ func (w *worker) simulateBundle(
 			// for unRevertible tx but itself can be dropped, we drop it and revert the state and gas pool
 			if containsHash(bundle.DroppingTxHashes, receipt.TxHash) {
 				log.Warn("drop tx in bundle", "hash", receipt.TxHash.String())
-				state = prevState
-				gasPool = prevGasPool
+				// do not need to revert the state and gas pool for they are already reverted in ApplyTransaction
 				bundle.Txs = bundle.Txs.Remove(i)
+				txsLen = len(bundle.Txs)
+				i--
 				continue
 			}
 
@@ -544,8 +547,7 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 			gp   = env.gasPool.Gas()
 		)
 
-		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, env.gasPool, env.state, env.header, tx,
-			&env.header.GasUsed, *w.chain.GetVMConfig())
+		receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed)
 		if err != nil {
 			env.state.RevertToSnapshot(snap)
 			env.gasPool.SetGas(gp)

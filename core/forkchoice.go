@@ -19,11 +19,11 @@ package core
 import (
 	crand "crypto/rand"
 	"errors"
+	"math"
 	"math/big"
 	mrand "math/rand"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -31,8 +31,7 @@ import (
 )
 
 // ChainReader defines a small collection of methods needed to access the local
-// blockchain during header verification. It's implemented by both blockchain
-// and lightchain.
+// blockchain during header verification. It's implemented by blockchain.
 type ChainReader interface {
 	// Config retrieves the header chain's chain configuration.
 	Config() *params.ChainConfig

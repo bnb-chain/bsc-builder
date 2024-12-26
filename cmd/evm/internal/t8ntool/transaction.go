@@ -86,7 +86,7 @@ func Transaction(ctx *cli.Context) error {
 	if txStr == stdinSelector {
 		decoder := json.NewDecoder(os.Stdin)
 		if err := decoder.Decode(inputData); err != nil {
-			return NewError(ErrorJson, fmt.Errorf("failed unmarshaling stdin: %v", err))
+			return NewError(ErrorJson, fmt.Errorf("failed unmarshalling stdin: %v", err))
 		}
 		// Decode the body of already signed transactions
 		body = common.FromHex(inputData.TxRlp)
@@ -133,7 +133,7 @@ func Transaction(ctx *cli.Context) error {
 			r.Address = sender
 		}
 		// Check intrinsic gas
-		if gas, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil,
+		if gas, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.AuthList(), tx.To() == nil,
 			chainConfig.IsHomestead(new(big.Int)), chainConfig.IsIstanbul(new(big.Int)), chainConfig.IsShanghai(new(big.Int), 0)); err != nil {
 			r.Error = err
 			results = append(results, r)

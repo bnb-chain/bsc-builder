@@ -33,7 +33,7 @@ import (
 
 var (
 	// blobTxMinBlobGasPrice is the big.Int version of the configured protocol
-	// parameter to avoid constucting a new big integer for every transaction.
+	// parameter to avoid constructing a new big integer for every transaction.
 	blobTxMinBlobGasPrice = big.NewInt(params.BlobTxMinBlobGasprice)
 )
 
@@ -47,6 +47,11 @@ type ValidationOptions struct {
 	MinTip  *big.Int // Minimum gas tip needed to allow a transaction into the caller pool
 	MaxGas  uint64   // Max acceptable transaction gas in the txpool
 }
+
+// ValidationFunction is an method type which the pools use to perform the tx-validations which do not
+// require state access. Production code typically uses ValidateTransaction, whereas testing-code
+// might choose to instead use something else, e.g. to always fail or avoid heavy cpu usage.
+type ValidationFunction func(tx *types.Transaction, head *types.Header, signer types.Signer, opts *ValidationOptions) error
 
 // ValidateTransaction is a helper method to check whether a transaction is valid
 // according to the consensus rules, but does not check state-dependent validation
@@ -106,11 +111,11 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	}
 	// Make sure the transaction is signed properly
 	if _, err := types.Sender(signer, tx); err != nil {
-		return ErrInvalidSender
+		return fmt.Errorf("%w: %v", ErrInvalidSender, err)
 	}
 	// Ensure the transaction has more gas than the bare minimum needed to cover
 	// the transaction metadata
-	intrGas, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil, true, opts.Config.IsIstanbul(head.Number), opts.Config.IsShanghai(head.Number, head.Time))
+	intrGas, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.AuthList(), tx.To() == nil, true, opts.Config.IsIstanbul(head.Number), opts.Config.IsShanghai(head.Number, head.Time))
 	if err != nil {
 		return err
 	}
@@ -128,7 +133,7 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 		}
 		sidecar := tx.BlobTxSidecar()
 		if sidecar == nil {
-			return fmt.Errorf("missing sidecar in blob transaction")
+			return errors.New("missing sidecar in blob transaction")
 		}
 		// Ensure the number of items in the blob transaction and various side
 		// data match up before doing any expensive validations
@@ -169,7 +174,7 @@ func validateBlobSidecar(hashes []common.Hash, sidecar *types.BlobTxSidecar) err
 	// Blob commitments match with the hashes in the transaction, verify the
 	// blobs themselves via KZG
 	for i := range sidecar.Blobs {
-		if err := kzg4844.VerifyBlobProof(sidecar.Blobs[i], sidecar.Commitments[i], sidecar.Proofs[i]); err != nil {
+		if err := kzg4844.VerifyBlobProof(&sidecar.Blobs[i], sidecar.Commitments[i], sidecar.Proofs[i]); err != nil {
 			return fmt.Errorf("invalid blob %d: %v", i, err)
 		}
 	}
@@ -208,7 +213,7 @@ type ValidationOptionsWithState struct {
 // rules without duplicating code and running the risk of missed updates.
 func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, opts *ValidationOptionsWithState) error {
 	// Ensure the transaction adheres to nonce ordering
-	from, err := signer.Sender(tx) // already validated (and cached), but cleaner to check
+	from, err := types.Sender(signer, tx) // already validated (and cached), but cleaner to check
 	if err != nil {
 		log.Error("Transaction sender recovery failed", "err", err)
 		return err
