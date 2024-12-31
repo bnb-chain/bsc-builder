@@ -506,6 +506,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 // the received event. It can support two modes: automatically generate task and
 // submit it or return task according to given parameters for various proposes.
 func (w *worker) mainLoop() {
+	log.Debug("test: main loop start")
 	defer w.wg.Done()
 	defer w.chainHeadSub.Unsubscribe()
 	defer func() {
@@ -517,6 +518,7 @@ func (w *worker) mainLoop() {
 	for {
 		select {
 		case req := <-w.newWorkCh:
+			log.Debug("test: commit work")
 			w.commitWork(req.interruptCh, req.timestamp)
 
 		case req := <-w.getWorkCh:
@@ -1324,14 +1326,17 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 
 LOOP:
 	for {
+		log.Debug("test: prepareWork")
 		work, err := w.prepareWork(&generateParams{
 			timestamp: uint64(timestamp),
 			coinbase:  coinbase,
 			prevWork:  prevWork,
 		}, false)
 		if err != nil {
+			log.Debug("test: prepareWork failed", "err", err)
 			return
 		}
+		log.Debug("test: prepareWork finished", "work", work)
 		prevWork = work
 		workList = append(workList, work)
 
@@ -1362,6 +1367,7 @@ LOOP:
 
 		// Fill pending transactions from the txpool into the block.
 		fillStart := time.Now()
+		log.Debug("test: fillTransactionsAndBundles", "fillStart", fillStart)
 		err = w.fillTransactionsAndBundles(interruptCh, work, stopTimer)
 		fillDuration := time.Since(fillStart)
 		work.duration = fillDuration
