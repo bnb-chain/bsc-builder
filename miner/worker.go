@@ -1255,6 +1255,7 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 // commitWork generates several new sealing tasks based on the parent block
 // and submit them to the sealer.
 func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
+	log.Debug("test: commit work internal 1")
 	// Abort committing if node is still syncing
 	if w.syncing.Load() {
 		return
@@ -1263,8 +1264,10 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 
 	// Set the coinbase if the worker is running or it's required
 	var coinbase common.Address
+	log.Debug("test: commit work internal 2")
 	if w.isRunning() {
 		if w.bidder.enabled() {
+			log.Debug("test: commit work internal 3")
 			var err error
 			// take the next in-turn validator as coinbase
 			coinbase, err = w.engine.NextInTurnValidator(w.chain, w.chain.CurrentBlock())
@@ -1292,7 +1295,9 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 				w.config.GasCeil = w.bidder.validators[coinbase].GasCeil
 			}
 			w.bidder.validatorsMu.Unlock()
+			log.Debug("test: commit work internal 4")
 		} else {
+			log.Debug("test: commit work internal 5")
 			coinbase = w.etherbase()
 			if coinbase == (common.Address{}) {
 				log.Error("Refusing to mine without etherbase")
@@ -1301,6 +1306,7 @@ func (w *worker) commitWork(interruptCh chan int32, timestamp int64) {
 		}
 	}
 
+	log.Debug("test: commit work internal 6")
 	stopTimer := time.NewTimer(0)
 	defer stopTimer.Stop()
 	<-stopTimer.C // discard the initial tick
