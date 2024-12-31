@@ -183,6 +183,8 @@ func (b *Bidder) register(cfg minerconfig.ValidatorConfig) {
 		return
 	}
 
+	log.Debug("test: register validator", "address", cfg.Address, "params", params)
+
 	b.validators[cfg.Address] = &validator{
 		Client:                cl,
 		BidSimulationLeftOver: params.BidSimulationLeftOver,
