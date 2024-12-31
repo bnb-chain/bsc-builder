@@ -88,12 +88,12 @@ type BundlePool struct {
 }
 
 func (p *BundlePool) GetBlobs(vhashes []common.Hash) ([]*kzg4844.Blob, []*kzg4844.Proof) {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
 func (p *BundlePool) Clear() {
-	//TODO implement me
+	// TODO implement me
 	panic("implement me")
 }
 
@@ -150,6 +150,8 @@ func (p *BundlePool) FilterBundle(bundle *types.Bundle) bool {
 
 // AddBundle adds a mev bundle to the pool
 func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
+	log.Debug("test: AddBundle", "bundle", bundle)
+
 	if p.simulator == nil {
 		return ErrSimulatorMissing
 	}
