@@ -47,6 +47,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 
 		// if no bundles, not necessary to fill transactions
 		if len(bundles) == 0 {
+			log.Debug("Bidder: no bundles")
 			return errors.New("no bundles in bundle pool")
 		}
 
