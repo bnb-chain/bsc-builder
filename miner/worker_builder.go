@@ -61,7 +61,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 		log.Debug("Bidder: generateOrderedBundles done", "txs", len(txs), "bundle", bundle)
 
 		if err = w.commitBundles(env, txs, interruptCh, stopTimer); err != nil {
-			log.Error("fail to commit bundles", "err", err)
+			log.Error("Bidder: fail to commit bundles", "err", err)
 			return err
 		}
 
