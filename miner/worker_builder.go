@@ -309,8 +309,13 @@ func (w *worker) simulateBundles(env *environment, bundles []*types.Bundle) ([]*
 		go func(idx int, bundle *types.Bundle, state *state.StateDB) {
 			defer wg.Done()
 
+			log.Debug("Bidder: simulateBundles1", "envstate", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
+
 			gasPool := prepareGasPool(env.header.GasLimit)
 			simmed, err := w.simulateBundle(env, bundle, state, gasPool, 0, true, true)
+
+			log.Debug("Bidder: simulateBundles2", "envstate", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
+
 			if err != nil {
 				log.Trace("Error computing gas for a simulateBundle", "error", err)
 				return
