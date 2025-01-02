@@ -359,7 +359,7 @@ func (w *worker) mergeBundles(
 		EthSentToSystem: new(big.Int),
 	}
 
-	evm := vm.NewEVM(core.NewEVMBlockContext(env.header, w.chain, &env.coinbase), env.state, w.chainConfig, vm.Config{})
+	evm := vm.NewEVM(core.NewEVMBlockContext(env.header, w.chain, &env.coinbase), env.state.Copy(), w.chainConfig, vm.Config{})
 
 	for _, bundle := range bundles {
 		// if we don't have enough gas for any further transactions then we're done
