@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -312,7 +313,8 @@ func (w *worker) simulateBundles(env *environment, bundles []*types.Bundle) ([]*
 			log.Debug("Bidder: simulateBundles1", "envstate", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
 
 			gasPool := prepareGasPool(env.header.GasLimit)
-			simmed, err := w.simulateBundle(env, bundle, state, gasPool, 0, true, true)
+			evm := vm.NewEVM(core.NewEVMBlockContext(env.header, w.chain, &env.coinbase), state, w.chainConfig, vm.Config{})
+			simmed, err := w.simulateBundle(evm, env.header, bundle, state, gasPool, 0, true, true)
 
 			log.Debug("Bidder: simulateBundles2", "envstate", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
 
@@ -361,6 +363,8 @@ func (w *worker) mergeBundles(
 		EthSentToSystem: new(big.Int),
 	}
 
+	evm := vm.NewEVM(core.NewEVMBlockContext(env.header, w.chain, &env.coinbase), env.state, w.chainConfig, vm.Config{})
+
 	for _, bundle := range bundles {
 		// if we don't have enough gas for any further transactions then we're done
 		if gasPool.Gas() < smallBundleGas {
@@ -374,7 +378,7 @@ func (w *worker) mergeBundles(
 		floorGasPrice := new(big.Int).Mul(bundle.BundleGasPrice, big.NewInt(99))
 		floorGasPrice = floorGasPrice.Div(floorGasPrice, big.NewInt(100))
 
-		simulatedBundle, err := w.simulateBundle(env, bundle.OriginalBundle, currentState, gasPool, len(includedTxs), true, false)
+		simulatedBundle, err := w.simulateBundle(evm, env.header, bundle.OriginalBundle, currentState, gasPool, len(includedTxs), true, false)
 
 		if err != nil || simulatedBundle.BundleGasPrice.Cmp(floorGasPrice) <= 0 {
 			currentState = prevState
@@ -414,7 +418,7 @@ func (w *worker) mergeBundles(
 // simulateBundle computes the gas price for a whole simulateBundle based on the same ctx
 // named computeBundleGas in flashbots
 func (w *worker) simulateBundle(
-	env *environment, bundle *types.Bundle, state *state.StateDB, gasPool *core.GasPool, currentTxCount int,
+	evm *vm.EVM, header *types.Header, bundle *types.Bundle, state *state.StateDB, gasPool *core.GasPool, currentTxCount int,
 	prune, pruneGasExceed bool,
 ) (*types.SimulatedBundle, error) {
 	var (
@@ -434,13 +438,7 @@ func (w *worker) simulateBundle(
 		snap := state.Snapshot()
 		gp := gasPool.Gas()
 
-		log.Debug("Bidder: simulateBundle1", "envstate", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
-		log.Debug("Bidder: simulateBundle1", "state", state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
-
-		receipt, err := core.ApplyTransaction(env.evm, gasPool, state, env.header, tx, &tempGasUsed)
-
-		log.Debug("Bidder: simulateBundle2", "envstate", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
-		log.Debug("Bidder: simulateBundle2", "state", state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
+		receipt, err := core.ApplyTransaction(evm, gasPool, state, header, tx, &tempGasUsed)
 
 		if err != nil {
 			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
@@ -495,13 +493,13 @@ func (w *worker) simulateBundle(
 			bundleGasUsed += receipt.GasUsed
 
 			txGasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-			effectiveTip, er := tx.EffectiveGasTip(env.header.BaseFee)
+			effectiveTip, er := tx.EffectiveGasTip(header.BaseFee)
 			if er != nil {
 				return nil, er
 			}
 
-			if env.header.BaseFee != nil {
-				effectiveTip.Add(effectiveTip, env.header.BaseFee)
+			if header.BaseFee != nil {
+				effectiveTip.Add(effectiveTip, header.BaseFee)
 			}
 
 			txGasFees := new(big.Int).Mul(txGasUsed, effectiveTip)
