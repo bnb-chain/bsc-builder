@@ -259,7 +259,7 @@ func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
 		return nil, err
 	}
 
-	s, err := miner.worker.simulateBundle(env, bundle, parentState, env.gasPool, 0, true, true)
+	s, err := miner.worker.simulateBundle(env.evm, env.header, bundle, parentState, env.gasPool, 0, true, true)
 	if err != nil {
 		return nil, err
 	}
