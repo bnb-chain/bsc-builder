@@ -346,7 +346,6 @@ func (w *worker) mergeBundles(
 	bundles []*types.SimulatedBundle,
 ) (types.Transactions, *types.SimulatedBundle, error) {
 	currentState := env.state.Copy()
-	log.Debug("Bidder: mergeBundles1", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
 	gasPool := prepareGasPool(env.header.GasLimit)
 
 	includedTxs := types.Transactions{}
@@ -370,11 +369,7 @@ func (w *worker) mergeBundles(
 		floorGasPrice := new(big.Int).Mul(bundle.BundleGasPrice, big.NewInt(99))
 		floorGasPrice = floorGasPrice.Div(floorGasPrice, big.NewInt(100))
 
-		log.Debug("Bidder: mergeBundles2", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
-
 		simulatedBundle, err := w.simulateBundle(env, bundle.OriginalBundle, currentState, gasPool, len(includedTxs), true, false)
-
-		log.Debug("Bidder: mergeBundles3", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
 
 		if err != nil || simulatedBundle.BundleGasPrice.Cmp(floorGasPrice) <= 0 {
 			currentState = prevState
@@ -434,7 +429,14 @@ func (w *worker) simulateBundle(
 		snap := state.Snapshot()
 		gp := gasPool.Gas()
 
+		log.Debug("Bidder: simulateBundle1", "envstate", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
+		log.Debug("Bidder: simulateBundle1", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
+
 		receipt, err := core.ApplyTransaction(env.evm, gasPool, state, env.header, tx, &tempGasUsed)
+
+		log.Debug("Bidder: simulateBundle2", "envstate", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
+		log.Debug("Bidder: simulateBundle2", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
+
 		if err != nil {
 			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
 
