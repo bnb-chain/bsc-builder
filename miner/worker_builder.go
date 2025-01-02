@@ -58,6 +58,8 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 			return err
 		}
 
+		log.Debug("bidder: generateOrderedBundles done", "txs", len(txs), "bundle", bundle)
+
 		if err = w.commitBundles(env, txs, interruptCh, stopTimer); err != nil {
 			log.Error("fail to commit bundles", "err", err)
 			return err
@@ -263,16 +265,12 @@ func (w *worker) generateOrderedBundles(
 		return priceI.Cmp(priceJ) >= 0
 	})
 
-	log.Debug("Bidder: generateOrderedBundles1", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
-
 	// recompute bundle gas price based on the same state and current env
 	simulatedBundles, err := w.simulateBundles(env, bundles)
 	if err != nil {
 		log.Error("fail to simulate bundles base on the same state", "err", err)
 		return nil, nil, err
 	}
-
-	log.Debug("Bidder: generateOrderedBundles2", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
 
 	// sort bundles according to fresh gas price
 	sort.SliceStable(simulatedBundles, func(i, j int) bool {
@@ -310,13 +308,9 @@ func (w *worker) simulateBundles(env *environment, bundles []*types.Bundle) ([]*
 		go func(idx int, bundle *types.Bundle, state *state.StateDB) {
 			defer wg.Done()
 
-			log.Debug("Bidder: simulateBundles1", "envstate", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
-
 			gasPool := prepareGasPool(env.header.GasLimit)
 			evm := vm.NewEVM(core.NewEVMBlockContext(env.header, w.chain, &env.coinbase), state, w.chainConfig, vm.Config{})
 			simmed, err := w.simulateBundle(evm, env.header, bundle, state, gasPool, 0, true, true)
-
-			log.Debug("Bidder: simulateBundles2", "envstate", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
 
 			if err != nil {
 				log.Trace("Error computing gas for a simulateBundle", "error", err)
