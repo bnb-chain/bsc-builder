@@ -262,12 +262,16 @@ func (w *worker) generateOrderedBundles(
 		return priceI.Cmp(priceJ) >= 0
 	})
 
+	log.Debug("Bidder: generateOrderedBundles1", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
+
 	// recompute bundle gas price based on the same state and current env
 	simulatedBundles, err := w.simulateBundles(env, bundles)
 	if err != nil {
 		log.Error("fail to simulate bundles base on the same state", "err", err)
 		return nil, nil, err
 	}
+
+	log.Debug("Bidder: generateOrderedBundles2", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
 
 	// sort bundles according to fresh gas price
 	sort.SliceStable(simulatedBundles, func(i, j int) bool {
@@ -342,6 +346,7 @@ func (w *worker) mergeBundles(
 	bundles []*types.SimulatedBundle,
 ) (types.Transactions, *types.SimulatedBundle, error) {
 	currentState := env.state.Copy()
+	log.Debug("Bidder: mergeBundles1", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
 	gasPool := prepareGasPool(env.header.GasLimit)
 
 	includedTxs := types.Transactions{}
@@ -365,7 +370,11 @@ func (w *worker) mergeBundles(
 		floorGasPrice := new(big.Int).Mul(bundle.BundleGasPrice, big.NewInt(99))
 		floorGasPrice = floorGasPrice.Div(floorGasPrice, big.NewInt(100))
 
+		log.Debug("Bidder: mergeBundles2", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
+
 		simulatedBundle, err := w.simulateBundle(env, bundle.OriginalBundle, currentState, gasPool, len(includedTxs), true, false)
+
+		log.Debug("Bidder: mergeBundles3", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
 
 		if err != nil || simulatedBundle.BundleGasPrice.Cmp(floorGasPrice) <= 0 {
 			currentState = prevState
