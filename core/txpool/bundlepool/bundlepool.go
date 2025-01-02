@@ -226,19 +226,16 @@ func (p *BundlePool) PendingBundles(blockNumber uint64, blockTimestamp uint64) [
 	defer p.mu.Unlock()
 
 	ret := make([]*types.Bundle, 0)
-	log.Debug("Bidder: PendingBundles1", "count", len(p.bundles))
 	for hash, bundle := range p.bundles {
 		// Prune outdated bundles
 		if (bundle.MaxTimestamp != 0 && blockTimestamp > bundle.MaxTimestamp) ||
 			(bundle.MaxBlockNumber != 0 && blockNumber > bundle.MaxBlockNumber) {
 			p.deleteBundle(hash)
-			log.Debug("Bidder: PendingBundles2")
 			continue
 		}
 
 		// Roll over future bundles
 		if bundle.MinTimestamp != 0 && blockTimestamp < bundle.MinTimestamp {
-			log.Debug("Bidder: PendingBundles3")
 			continue
 		}
 
@@ -248,7 +245,6 @@ func (p *BundlePool) PendingBundles(blockNumber uint64, blockTimestamp uint64) [
 
 	bundleGauge.Update(int64(len(p.bundles)))
 	slotsGauge.Update(int64(p.slots))
-	log.Debug("Bidder: PendingBundles3", "ret", len(ret))
 	return ret
 }
 

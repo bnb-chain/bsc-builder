@@ -58,7 +58,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 			return err
 		}
 
-		log.Debug("bidder: generateOrderedBundles done", "txs", len(txs), "bundle", bundle)
+		log.Debug("Bidder: generateOrderedBundles done", "txs", len(txs), "bundle", bundle)
 
 		if err = w.commitBundles(env, txs, interruptCh, stopTimer); err != nil {
 			log.Error("fail to commit bundles", "err", err)
@@ -66,7 +66,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 		}
 
 		env.profit.Add(env.profit, bundle.EthSentToSystem)
-		log.Info("fill bundles", "bundles_count", len(bundles))
+		log.Info("Bidder: fill bundles", "bundles_count", len(bundles))
 	}
 
 	// commit normal transactions
@@ -132,7 +132,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 			return err
 		}
 	}
-	log.Info("fill bundles and transactions done", "total_txs_count", len(env.txs))
+	log.Info("Bidder: fill bundles and transactions done", "total_txs_count", len(env.txs))
 	return nil
 }
 
