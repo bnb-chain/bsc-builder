@@ -430,12 +430,12 @@ func (w *worker) simulateBundle(
 		gp := gasPool.Gas()
 
 		log.Debug("Bidder: simulateBundle1", "envstate", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
-		log.Debug("Bidder: simulateBundle1", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
+		log.Debug("Bidder: simulateBundle1", "state", state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
 
 		receipt, err := core.ApplyTransaction(env.evm, gasPool, state, env.header, tx, &tempGasUsed)
 
 		log.Debug("Bidder: simulateBundle2", "envstate", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
-		log.Debug("Bidder: simulateBundle2", "state", env.state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
+		log.Debug("Bidder: simulateBundle2", "state", state.GetNonce(common.HexToAddress("0xf155A90e1308817f186Ad69E8Ee5939645ce54E6")))
 
 		if err != nil {
 			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
