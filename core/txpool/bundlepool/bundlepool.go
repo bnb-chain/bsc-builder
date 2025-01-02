@@ -158,16 +158,12 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 		return ErrBundleTimestampTooHigh
 	}
 
-	log.Debug("Bidder: AddBundle1", "bundle", bundle)
-
 	price, err := p.simulator.SimulateBundle(bundle)
 	if err != nil {
 		log.Debug("Bidder: AddBundle sim err", "err", err)
 		return err
 	}
 	bundle.Price = price
-
-	log.Debug("Bidder: AddBundle2", "bundle", bundle)
 
 	hash := bundle.Hash()
 	if _, ok := p.bundles[hash]; ok {
@@ -177,8 +173,6 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 	if price.Cmp(p.minimalBundleGasPrice()) < 0 && p.slots+numSlots(bundle) > p.config.GlobalSlots {
 		return ErrBundleGasPriceLow
 	}
-
-	log.Debug("Bidder: AddBundle3", "bundle", bundle)
 
 	p.mu.Lock()
 	for p.slots+numSlots(bundle) > p.config.GlobalSlots {
@@ -192,14 +186,12 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 	bundleGauge.Update(int64(len(p.bundles)))
 	slotsGauge.Update(int64(p.slots))
 
-	log.Debug("Bidder: AddBundle4", "bundle", bundle)
-
 	p.bundleMetricsMu.Lock()
 	currentHeaderNumber := p.blockchain.CurrentBlock().Number.Int64()
 	p.bundleMetrics[currentHeaderNumber] = append(p.bundleMetrics[currentHeaderNumber], bundle.TxHashes())
 	p.bundleMetricsMu.Unlock()
 
-	log.Debug("Bidder: AddBundle5", "bundle", bundle)
+	log.Debug("Bidder: AddBundle", "bundle", bundle)
 	return nil
 }
 
@@ -234,16 +226,19 @@ func (p *BundlePool) PendingBundles(blockNumber uint64, blockTimestamp uint64) [
 	defer p.mu.Unlock()
 
 	ret := make([]*types.Bundle, 0)
+	log.Debug("Bidder: PendingBundles1", "count", len(p.bundles))
 	for hash, bundle := range p.bundles {
 		// Prune outdated bundles
 		if (bundle.MaxTimestamp != 0 && blockTimestamp > bundle.MaxTimestamp) ||
 			(bundle.MaxBlockNumber != 0 && blockNumber > bundle.MaxBlockNumber) {
 			p.deleteBundle(hash)
+			log.Debug("Bidder: PendingBundles2")
 			continue
 		}
 
 		// Roll over future bundles
 		if bundle.MinTimestamp != 0 && blockTimestamp < bundle.MinTimestamp {
+			log.Debug("Bidder: PendingBundles3")
 			continue
 		}
 
@@ -253,6 +248,7 @@ func (p *BundlePool) PendingBundles(blockNumber uint64, blockTimestamp uint64) [
 
 	bundleGauge.Update(int64(len(p.bundles)))
 	slotsGauge.Update(int64(p.slots))
+	log.Debug("Bidder: PendingBundles3", "ret", len(ret))
 	return ret
 }
 
