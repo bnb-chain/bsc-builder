@@ -52,13 +52,15 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 			return errors.New("no bundles in bundle pool")
 		}
 
+		log.Debug("Bidder: generateOrderedBundles start", "state", env.state.GetNonce(common.HexToAddress("0x8e929a314fbB8BE79441daE743F5E5F8605D3EA2")))
+
 		txs, bundle, err := w.generateOrderedBundles(env, bundles)
 		if err != nil {
 			log.Error("fail to generate ordered bundles", "err", err)
 			return err
 		}
 
-		log.Debug("Bidder: generateOrderedBundles done", "txs", len(txs), "bundle", bundle)
+		log.Debug("Bidder: generateOrderedBundles done", "txs", len(txs), "bundle", bundle, "state", env.state.GetNonce(common.HexToAddress("0x8e929a314fbB8BE79441daE743F5E5F8605D3EA2")))
 
 		if err = w.commitBundles(env, txs, interruptCh, stopTimer); err != nil {
 			log.Error("Bidder: fail to commit bundles", "err", err)
