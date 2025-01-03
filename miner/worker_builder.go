@@ -388,7 +388,8 @@ func (w *worker) mergeBundles(
 			currentState = prevState
 			gasPool = prevGasPool
 
-			log.Error("failed to merge bundle", "floorGasPrice", floorGasPrice, "err", err)
+			log.Error("failed to merge bundle", "floorGasPrice", floorGasPrice.String(),
+				"bundlePrice", simulatedBundle.BundleGasPrice.String(), "err", err)
 			continue
 		}
 
