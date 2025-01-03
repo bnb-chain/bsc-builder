@@ -62,9 +62,17 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 
 		log.Debug("Bidder: generateOrderedBundles done", "txs", len(txs), "bundle", bundle, "state", env.state.GetNonce(common.HexToAddress("0x8e929a314fbB8BE79441daE743F5E5F8605D3EA2")))
 
+		if len(txs) > 1 {
+			log.Debug("Bidder: commitBundles start", "txHash", txs[0].Hash())
+		}
+
 		if err = w.commitBundles(env, txs, interruptCh, stopTimer); err != nil {
 			log.Error("Bidder: fail to commit bundles", "err", err)
 			return err
+		}
+
+		if len(env.txs) > 1 {
+			log.Debug("Bidder: commitBundles end", "envtxs", len(env.txs), "txHash", env.txs[0].Hash())
 		}
 
 		env.profit.Add(env.profit, bundle.EthSentToSystem)

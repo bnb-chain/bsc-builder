@@ -233,6 +233,10 @@ func (b *Bidder) bid(work *environment) {
 		return
 	}
 
+	if len(work.txs) > 0 {
+		log.Debug("Bidder: bidding start", "txcount", len(work.txs), "txHash", work.txs[0].Hash())
+	}
+
 	// construct bid from work
 	{
 		var txs []hexutil.Bytes
