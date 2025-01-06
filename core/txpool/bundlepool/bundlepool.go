@@ -351,7 +351,7 @@ func (p *BundlePool) Status(hash common.Hash) txpool.TxStatus {
 
 func (p *BundlePool) filter(tx *types.Transaction) bool {
 	switch tx.Type() {
-	case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType:
+	case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType, types.SetCodeTxType:
 		return true
 	default:
 		return false
