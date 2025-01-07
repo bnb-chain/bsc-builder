@@ -431,8 +431,7 @@ func (w *worker) simulateBundle(
 		snap := state.Snapshot()
 		gp := gasPool.Gas()
 
-		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, env.header, tx,
-			&tempGasUsed, *w.chain.GetVMConfig())
+		receipt, err := core.ApplyTransaction(env.evm, gasPool, state, env.header, tx, &tempGasUsed)
 		if err != nil {
 			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
 
@@ -558,8 +557,7 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 			gp   = env.gasPool.Gas()
 		)
 
-		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, env.gasPool, env.state, env.header, tx,
-			&env.header.GasUsed, *w.chain.GetVMConfig())
+		receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed)
 		if err != nil {
 			env.state.RevertToSnapshot(snap)
 			env.gasPool.SetGas(gp)

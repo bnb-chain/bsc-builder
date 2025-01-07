@@ -12,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -84,6 +85,16 @@ type BundlePool struct {
 
 	simulator  BundleSimulator
 	blockchain BlockChain
+}
+
+func (p *BundlePool) GetBlobs(vhashes []common.Hash) ([]*kzg4844.Blob, []*kzg4844.Proof) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (p *BundlePool) Clear() {
+	//TODO implement me
+	panic("implement me")
 }
 
 func New(config Config, chain BlockChain) *BundlePool {
