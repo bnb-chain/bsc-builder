@@ -431,12 +431,15 @@ func (w *worker) simulateBundle(
 		snap := state.Snapshot()
 		gp := gasPool.Gas()
 
+		droppable := containsHash(bundle.DroppingTxHashes, tx.Hash())
+		revertible := containsHash(bundle.RevertingTxHashes, tx.Hash())
+
 		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, env.header, tx,
-			&tempGasUsed, *w.chain.GetVMConfig())
+			&tempGasUsed, *w.chain.GetVMConfig(), droppable)
 		if err != nil {
 			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
 
-			if containsHash(bundle.DroppingTxHashes, tx.Hash()) {
+			if droppable {
 				log.Warn("drop tx in bundle", "hash", tx.Hash().String())
 				state.RevertToSnapshot(snap)
 				gasPool.SetGas(gp)
@@ -458,12 +461,13 @@ func (w *worker) simulateBundle(
 			return nil, err
 		}
 
-		if receipt.Status == types.ReceiptStatusFailed && !containsHash(bundle.RevertingTxHashes, receipt.TxHash) {
+		if receipt.Status == types.ReceiptStatusFailed && !revertible {
 			// for unRevertible tx but itself can be dropped, we drop it and revert the state and gas pool
-			if containsHash(bundle.DroppingTxHashes, receipt.TxHash) {
+			if droppable {
 				log.Warn("drop tx in bundle", "hash", receipt.TxHash.String())
 				// NOTE: here should not revert state, when no err returned by ApplyTransaction, state.clearJournalAndRefund()
 				// must had been called to avoid reverting across transactions, so we can directly remove the tx from bundle
+				state.RevertToSnapshot(snap)
 				gasPool.SetGas(gp)
 				bundle.Txs = bundle.Txs.Remove(i)
 				txsLen = len(bundle.Txs)
@@ -559,7 +563,7 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 		)
 
 		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, env.gasPool, env.state, env.header, tx,
-			&env.header.GasUsed, *w.chain.GetVMConfig())
+			&env.header.GasUsed, *w.chain.GetVMConfig(), false)
 		if err != nil {
 			env.state.RevertToSnapshot(snap)
 			env.gasPool.SetGas(gp)
