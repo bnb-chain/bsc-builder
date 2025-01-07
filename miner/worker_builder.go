@@ -33,6 +33,14 @@ var (
 func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environment, stopTimer *time.Timer) error {
 	env.state.StopPrefetcher() // no need to prefetch txs for a builder
 
+	// reduce gas limit for builder block
+	fullGasLimit := env.header.GasLimit
+	env.header.GasLimit /= 2
+
+	defer func() {
+		env.header.GasLimit = fullGasLimit
+	}()
+
 	// commit bundles
 	{
 		bundles := w.eth.TxPool().PendingBundles(env.header.Number.Uint64(), env.header.Time)
@@ -49,12 +57,12 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 		}
 
 		if err = w.commitBundles(env, txs, interruptCh, stopTimer); err != nil {
-			log.Error("test: fail to commit bundles", "err", err)
+			log.Error("fail to commit bundles", "err", err)
 			return err
 		}
 
 		env.profit.Add(env.profit, bundle.EthSentToSystem)
-		log.Info("test: fill bundles", "bundles_count", len(bundles))
+		log.Info("fill bundles", "bundles_count", len(bundles))
 	}
 
 	// commit normal transactions
@@ -117,7 +125,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 			"blob_txs_count", len(prioBlobTxs)+len(normalBlobTxs))
 	}
 
-	log.Info("test: fill bundles and transactions done", "total_txs_count", len(env.txs))
+	log.Info("fill bundles and transactions done", "total_txs_count", len(env.txs))
 	return nil
 }
 
@@ -417,12 +425,14 @@ func (w *worker) simulateBundle(
 		snap := state.Snapshot()
 		gp := gasPool.Gas()
 
-		receipt, err := core.ApplyTransaction(evm, gasPool, state, header, tx, &tempGasUsed)
+		droppable := containsHash(bundle.DroppingTxHashes, tx.Hash())
+		revertible := containsHash(bundle.RevertingTxHashes, tx.Hash())
 
+		receipt, err := core.ApplyTransaction(evm, gasPool, state, header, tx, &tempGasUsed, droppable)
 		if err != nil {
 			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
 
-			if containsHash(bundle.DroppingTxHashes, tx.Hash()) {
+			if droppable {
 				log.Warn("drop tx in bundle", "hash", tx.Hash().String())
 				state.RevertToSnapshot(snap)
 				gasPool.SetGas(gp)
@@ -444,12 +454,13 @@ func (w *worker) simulateBundle(
 			return nil, err
 		}
 
-		if receipt.Status == types.ReceiptStatusFailed && !containsHash(bundle.RevertingTxHashes, receipt.TxHash) {
+		if receipt.Status == types.ReceiptStatusFailed && !revertible {
 			// for unRevertible tx but itself can be dropped, we drop it and revert the state and gas pool
-			if containsHash(bundle.DroppingTxHashes, receipt.TxHash) {
+			if droppable {
 				log.Warn("drop tx in bundle", "hash", receipt.TxHash.String())
 				// NOTE: here should not revert state, when no err returned by ApplyTransaction, state.clearJournalAndRefund()
 				// must had been called to avoid reverting across transactions, so we can directly remove the tx from bundle
+				state.RevertToSnapshot(snap)
 				gasPool.SetGas(gp)
 				bundle.Txs = bundle.Txs.Remove(i)
 				txsLen = len(bundle.Txs)
@@ -544,7 +555,7 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 			gp   = env.gasPool.Gas()
 		)
 
-		receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed)
+		receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, false)
 		if err != nil {
 			env.state.RevertToSnapshot(snap)
 			env.gasPool.SetGas(gp)
