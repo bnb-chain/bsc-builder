@@ -155,6 +155,8 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 	hash := bundle.Hash()
 
 	p.mu.Lock()
+	defer p.mu.Unlock()
+
 	if _, ok := p.bundles[hash]; ok {
 		return ErrBundleAlreadyExist
 	}
@@ -172,12 +174,11 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 
 	bundleGauge.Update(int64(len(p.bundles)))
 	slotsGauge.Update(int64(p.slots))
-	p.mu.Unlock()
 
 	p.bundleMetricsMu.Lock()
+	defer p.bundleMetricsMu.Unlock()
 	currentHeaderNumber := p.blockchain.CurrentBlock().Number.Int64()
 	p.bundleMetrics[currentHeaderNumber] = append(p.bundleMetrics[currentHeaderNumber], bundle.TxHashes())
-	p.bundleMetricsMu.Unlock()
 
 	return nil
 }
