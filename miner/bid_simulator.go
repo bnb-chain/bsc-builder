@@ -846,7 +846,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	}
 
 	receipt, err := core.ApplyTransaction(chainConfig, chain, &env.coinbase, env.gasPool, env.state, env.header, tx,
-		&env.header.GasUsed, *chain.GetVMConfig(), core.NewReceiptBloomGenerator())
+		&env.header.GasUsed, *chain.GetVMConfig(), false, core.NewReceiptBloomGenerator())
 	if err != nil {
 		return err
 	} else if unRevertible && receipt.Status == types.ReceiptStatusFailed {
