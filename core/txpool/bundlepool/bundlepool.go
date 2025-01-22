@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -359,14 +361,50 @@ func (p *BundlePool) reset(newHead *types.Header) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Prune outdated bundles
+	if len(p.bundles) == 0 {
+		bundleGauge.Update(int64(len(p.bundles)))
+		slotsGauge.Update(int64(p.slots))
+		return
+	}
+
+	// Prune outdated bundles or invalid bundles
+	block := p.blockchain.GetBlock(newHead.Hash(), newHead.Number.Uint64())
+	txSet := mapset.NewSet[common.Hash]()
+	if block != nil {
+		txs := block.Transactions()
+		for _, tx := range txs {
+			txSet.Add(tx.Hash())
+		}
+	}
+
+	p.bundleHeap = make(BundleHeap, 0)
 	for hash, bundle := range p.bundles {
 		if (bundle.MaxTimestamp != 0 && newHead.Time > bundle.MaxTimestamp) ||
 			(bundle.MaxBlockNumber != 0 && newHead.Number.Cmp(new(big.Int).SetUint64(bundle.MaxBlockNumber)) > 0) {
 			p.slots -= numSlots(p.bundles[hash])
 			delete(p.bundles, hash)
+		} else {
+			for _, tx := range bundle.Txs {
+				if txSet.Contains(tx.Hash()) && !containsHash(bundle.DroppingTxHashes, tx.Hash()) {
+					p.slots -= numSlots(p.bundles[hash])
+					delete(p.bundles, hash)
+					break
+				}
+			}
+		}
+		if p.bundles[hash] != nil {
+			heap.Push(&p.bundleHeap, bundle)
 		}
 	}
+}
+
+func containsHash(arr []common.Hash, match common.Hash) bool {
+	for _, elem := range arr {
+		if elem == match {
+			return true
+		}
+	}
+	return false
 }
 
 // deleteBundle deletes a bundle from the pool.
