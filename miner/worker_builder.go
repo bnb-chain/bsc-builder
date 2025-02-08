@@ -36,7 +36,6 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 	// commit bundles
 	{
 		var bundles []*types.Bundle
-		log.Debug("test: start fillTransactionsAndBundles")
 		bundles = w.eth.TxPool().PendingBundles(env.header.Number.Uint64(), env.header.Time)
 
 		// if no bundles, not necessary to fill transactions
@@ -44,31 +43,19 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 			return errors.New("no bundles in bundle pool")
 		}
 
-		log.Debug("Bidder: generateOrderedBundles start", "state", env.state.GetNonce(common.HexToAddress("0x8e929a314fbB8BE79441daE743F5E5F8605D3EA2")))
-
 		txs, bundle, err := w.generateOrderedBundles(env, bundles)
 		if err != nil {
 			log.Error("fail to generate ordered bundles", "err", err)
 			return err
 		}
 
-		log.Debug("Bidder: generateOrderedBundles done", "txs", len(txs), "bundle", bundle, "state", env.state.GetNonce(common.HexToAddress("0x8e929a314fbB8BE79441daE743F5E5F8605D3EA2")))
-
-		if len(txs) > 1 {
-			log.Debug("Bidder: commitBundles start", "txHash", txs[0].Hash())
-		}
-
 		if err = w.commitBundles(env, txs, interruptCh, stopTimer); err != nil {
-			log.Error("Bidder: fail to commit bundles", "err", err)
+			log.Error("test: fail to commit bundles", "err", err)
 			return err
 		}
 
-		if len(env.txs) > 1 {
-			log.Debug("Bidder: commitBundles end", "envtxs", len(env.txs), "txHash", env.txs[0].Hash())
-		}
-
 		env.profit.Add(env.profit, bundle.EthSentToSystem)
-		log.Info("Bidder: fill bundles", "bundles_count", len(bundles))
+		log.Info("test: fill bundles", "bundles_count", len(bundles))
 	}
 
 	// commit normal transactions
@@ -131,7 +118,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 			"blob_txs_count", len(prioBlobTxs)+len(normalBlobTxs))
 	}
 
-	log.Info("Bidder: fill bundles and transactions done", "total_txs_count", len(env.txs))
+	log.Info("test: fill bundles and transactions done", "total_txs_count", len(env.txs))
 	return nil
 }
 

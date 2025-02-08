@@ -88,13 +88,10 @@ type BundlePool struct {
 }
 
 func (p *BundlePool) GetBlobs(vhashes []common.Hash) ([]*kzg4844.Blob, []*kzg4844.Proof) {
-	// TODO implement me
-	panic("implement me")
+	return nil, nil
 }
 
 func (p *BundlePool) Clear() {
-	// TODO implement me
-	panic("implement me")
 }
 
 func New(config Config, chain BlockChain) *BundlePool {
