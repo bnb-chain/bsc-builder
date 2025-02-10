@@ -323,7 +323,7 @@ func (miner *Miner) prepareSimulationEnv(parent *types.Header, state *state.Stat
 		header.BaseFee = eip1559.CalcBaseFee(miner.worker.chainConfig, parent)
 		if miner.worker.chainConfig.Parlia == nil && !miner.worker.chainConfig.IsLondon(parent.Number) {
 			parentGasLimit := parent.GasLimit * miner.worker.chainConfig.ElasticityMultiplier()
-			header.GasLimit = core.CalcGasLimitForBuilder(parentGasLimit, miner.worker.config.GasCeil)
+			header.GasLimit = core.CalcGasLimit(parentGasLimit, miner.worker.config.GasCeil)
 		}
 	}
 
