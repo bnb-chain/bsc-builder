@@ -35,8 +35,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 
 	// commit bundles
 	{
-		var bundles []*types.Bundle
-		bundles = w.eth.TxPool().PendingBundles(env.header.Number.Uint64(), env.header.Time)
+		bundles := w.eth.TxPool().PendingBundles(env.header.Number.Uint64(), env.header.Time)
 
 		// if no bundles, not necessary to fill transactions
 		if len(bundles) == 0 {
