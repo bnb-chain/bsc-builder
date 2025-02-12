@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -32,25 +33,9 @@ var (
 func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environment, stopTimer *time.Timer) error {
 	env.state.StopPrefetcher() // no need to prefetch txs for a builder
 
-	// reduce gas limit for builder block
-	fullGasLimit := env.header.GasLimit
-	env.header.GasLimit /= 2
-
-	defer func() {
-		env.header.GasLimit = fullGasLimit
-	}()
-
-	var (
-		localPlainTxs  map[common.Address][]*txpool.LazyTransaction
-		remotePlainTxs map[common.Address][]*txpool.LazyTransaction
-		localBlobTxs   map[common.Address][]*txpool.LazyTransaction
-		remoteBlobTxs  map[common.Address][]*txpool.LazyTransaction
-		bundles        []*types.Bundle
-	)
-
 	// commit bundles
 	{
-		bundles = w.eth.TxPool().PendingBundles(env.header.Number.Uint64(), env.header.Time)
+		bundles := w.eth.TxPool().PendingBundles(env.header.Number.Uint64(), env.header.Time)
 
 		// if no bundles, not necessary to fill transactions
 		if len(bundles) == 0 {
@@ -64,19 +49,20 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 		}
 
 		if err = w.commitBundles(env, txs, interruptCh, stopTimer); err != nil {
-			log.Error("fail to commit bundles", "err", err)
+			log.Error("test: fail to commit bundles", "err", err)
 			return err
 		}
 
 		env.profit.Add(env.profit, bundle.EthSentToSystem)
-		log.Info("fill bundles", "bundles_count", len(bundles))
+		log.Info("test: fill bundles", "bundles_count", len(bundles))
 	}
 
 	// commit normal transactions
 	{
-		w.mu.RLock()
+		w.confMu.RLock()
 		tip := w.tip
-		w.mu.RUnlock()
+		prio := w.prio
+		w.confMu.RUnlock()
 
 		// Retrieve the pending transactions pre-filtered by the 1559/4844 dynamic fees
 		filter := txpool.PendingFilter{
@@ -86,7 +72,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 			filter.BaseFee = uint256.MustFromBig(env.header.BaseFee)
 		}
 		if env.header.ExcessBlobGas != nil {
-			filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(*env.header.ExcessBlobGas))
+			filter.BlobFee = uint256.MustFromBig(eip4844.CalcBlobFee(w.chainConfig, env.header))
 		}
 		filter.OnlyPlainTxs, filter.OnlyBlobTxs = true, false
 		pendingPlainTxs := w.eth.TxPool().Pending(filter)
@@ -94,48 +80,44 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 		filter.OnlyPlainTxs, filter.OnlyBlobTxs = false, true
 		pendingBlobTxs := w.eth.TxPool().Pending(filter)
 
-		// Split the pending transactions into locals and remotes
+		// Split the pending transactions into locals and remotes.
+		prioPlainTxs, normalPlainTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
+		prioBlobTxs, normalBlobTxs := make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
+
+		for _, account := range prio {
+			if txs := normalPlainTxs[account]; len(txs) > 0 {
+				delete(normalPlainTxs, account)
+				prioPlainTxs[account] = txs
+			}
+			if txs := normalBlobTxs[account]; len(txs) > 0 {
+				delete(normalBlobTxs, account)
+				prioBlobTxs[account] = txs
+			}
+		}
+
 		// Fill the block with all available pending transactions.
-		localPlainTxs, remotePlainTxs = make(map[common.Address][]*txpool.LazyTransaction), pendingPlainTxs
-		localBlobTxs, remoteBlobTxs = make(map[common.Address][]*txpool.LazyTransaction), pendingBlobTxs
+		if len(prioPlainTxs) > 0 || len(prioBlobTxs) > 0 {
+			plainTxs := newTransactionsByPriceAndNonce(env.signer, prioPlainTxs, env.header.BaseFee)
+			blobTxs := newTransactionsByPriceAndNonce(env.signer, prioBlobTxs, env.header.BaseFee)
 
-		for _, account := range w.eth.TxPool().Locals() {
-			if txs := remotePlainTxs[account]; len(txs) > 0 {
-				delete(remotePlainTxs, account)
-				localPlainTxs[account] = txs
-			}
-			if txs := remoteBlobTxs[account]; len(txs) > 0 {
-				delete(remoteBlobTxs, account)
-				localBlobTxs[account] = txs
+			if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
+				return err
 			}
 		}
-		log.Info("fill transactions", "plain_txs_count", len(localPlainTxs)+len(remotePlainTxs), "blob_txs_count", len(localBlobTxs)+len(remoteBlobTxs))
-	}
+		if len(normalPlainTxs) > 0 || len(normalBlobTxs) > 0 {
+			plainTxs := newTransactionsByPriceAndNonce(env.signer, normalPlainTxs, env.header.BaseFee)
+			blobTxs := newTransactionsByPriceAndNonce(env.signer, normalBlobTxs, env.header.BaseFee)
 
-	// Fill the block with all available pending transactions.
-	// we will abort when:
-	//   1.new block was imported
-	//   2.out of Gas, no more transaction can be added.
-	//   3.the mining timer has expired, stop adding transactions.
-	//   4.interrupted resubmit timer, which is by default 10s.
-	//     resubmit is for PoW only, can be deleted for PoS consensus later
-	if len(localPlainTxs) > 0 || len(localBlobTxs) > 0 {
-		plainTxs := newTransactionsByPriceAndNonce(env.signer, localPlainTxs, env.header.BaseFee)
-		blobTxs := newTransactionsByPriceAndNonce(env.signer, localBlobTxs, env.header.BaseFee)
-
-		if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
-			return err
+			if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
+				return err
+			}
 		}
-	}
-	if len(remotePlainTxs) > 0 || len(remoteBlobTxs) > 0 {
-		plainTxs := newTransactionsByPriceAndNonce(env.signer, remotePlainTxs, env.header.BaseFee)
-		blobTxs := newTransactionsByPriceAndNonce(env.signer, remoteBlobTxs, env.header.BaseFee)
 
-		if err := w.commitTransactions(env, plainTxs, blobTxs, interruptCh, stopTimer); err != nil {
-			return err
-		}
+		log.Info("fill transactions", "plain_txs_count", len(prioPlainTxs)+len(normalPlainTxs),
+			"blob_txs_count", len(prioBlobTxs)+len(normalBlobTxs))
 	}
-	log.Info("fill bundles and transactions done", "total_txs_count", len(env.txs))
+
+	log.Info("test: fill bundles and transactions done", "total_txs_count", len(env.txs))
 	return nil
 }
 
@@ -312,7 +294,9 @@ func (w *worker) simulateBundles(env *environment, bundles []*types.Bundle) ([]*
 			defer wg.Done()
 
 			gasPool := prepareGasPool(env.header.GasLimit)
-			simmed, err := w.simulateBundle(env, bundle, state, gasPool, 0, true, true)
+			evm := vm.NewEVM(core.NewEVMBlockContext(env.header, w.chain, &env.coinbase), state, w.chainConfig, vm.Config{})
+			simmed, err := w.simulateBundle(evm, env.header, bundle, state, gasPool, 0, true, true)
+
 			if err != nil {
 				log.Trace("Error computing gas for a simulateBundle", "error", err)
 				return
@@ -358,6 +342,8 @@ func (w *worker) mergeBundles(
 		EthSentToSystem: new(big.Int),
 	}
 
+	evm := vm.NewEVM(core.NewEVMBlockContext(env.header, w.chain, &env.coinbase), env.state.Copy(), w.chainConfig, vm.Config{})
+
 	for _, bundle := range bundles {
 		// if we don't have enough gas for any further transactions then we're done
 		if gasPool.Gas() < smallBundleGas {
@@ -371,13 +357,13 @@ func (w *worker) mergeBundles(
 		floorGasPrice := new(big.Int).Mul(bundle.BundleGasPrice, big.NewInt(99))
 		floorGasPrice = floorGasPrice.Div(floorGasPrice, big.NewInt(100))
 
-		simulatedBundle, err := w.simulateBundle(env, bundle.OriginalBundle, currentState, gasPool, len(includedTxs), true, false)
+		simulatedBundle, err := w.simulateBundle(evm, env.header, bundle.OriginalBundle, currentState, gasPool, len(includedTxs), true, false)
 
 		if err != nil || simulatedBundle.BundleGasPrice.Cmp(floorGasPrice) <= 0 {
 			currentState = prevState
 			gasPool = prevGasPool
 
-			log.Error("failed to merge bundle", "floorGasPrice", floorGasPrice, "err", err)
+			log.Error("failed to merge bundle", "floorGasPrice", floorGasPrice.String(), "err", err)
 			continue
 		}
 
@@ -411,7 +397,7 @@ func (w *worker) mergeBundles(
 // simulateBundle computes the gas price for a whole simulateBundle based on the same ctx
 // named computeBundleGas in flashbots
 func (w *worker) simulateBundle(
-	env *environment, bundle *types.Bundle, state *state.StateDB, gasPool *core.GasPool, currentTxCount int,
+	evm *vm.EVM, header *types.Header, bundle *types.Bundle, state *state.StateDB, gasPool *core.GasPool, currentTxCount int,
 	prune, pruneGasExceed bool,
 ) (*types.SimulatedBundle, error) {
 	var (
@@ -431,8 +417,8 @@ func (w *worker) simulateBundle(
 		snap := state.Snapshot()
 		gp := gasPool.Gas()
 
-		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, gasPool, state, env.header, tx,
-			&tempGasUsed, *w.chain.GetVMConfig())
+		receipt, err := core.ApplyTransaction(evm, gasPool, state, header, tx, &tempGasUsed)
+
 		if err != nil {
 			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
 
@@ -486,13 +472,13 @@ func (w *worker) simulateBundle(
 			bundleGasUsed += receipt.GasUsed
 
 			txGasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-			effectiveTip, er := tx.EffectiveGasTip(env.header.BaseFee)
+			effectiveTip, er := tx.EffectiveGasTip(header.BaseFee)
 			if er != nil {
 				return nil, er
 			}
 
-			if env.header.BaseFee != nil {
-				effectiveTip.Add(effectiveTip, env.header.BaseFee)
+			if header.BaseFee != nil {
+				effectiveTip.Add(effectiveTip, header.BaseFee)
 			}
 
 			txGasFees := new(big.Int).Mul(txGasUsed, effectiveTip)
@@ -558,8 +544,7 @@ func (w *worker) simulateGaslessBundle(env *environment, bundle *types.Bundle) (
 			gp   = env.gasPool.Gas()
 		)
 
-		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &w.coinbase, env.gasPool, env.state, env.header, tx,
-			&env.header.GasUsed, *w.chain.GetVMConfig())
+		receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed)
 		if err != nil {
 			env.state.RevertToSnapshot(snap)
 			env.gasPool.SetGas(gp)
