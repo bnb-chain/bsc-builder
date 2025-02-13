@@ -33,6 +33,14 @@ var (
 func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environment, stopTimer *time.Timer) error {
 	env.state.StopPrefetcher() // no need to prefetch txs for a builder
 
+	// reduce gas limit for builder block
+	fullGasLimit := env.header.GasLimit
+	env.header.GasLimit /= 2
+
+	defer func() {
+		env.header.GasLimit = fullGasLimit
+	}()
+
 	// commit bundles
 	{
 		bundles := w.eth.TxPool().PendingBundles(env.header.Number.Uint64(), env.header.Time)
