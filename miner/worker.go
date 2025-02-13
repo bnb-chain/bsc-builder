@@ -790,7 +790,7 @@ func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction, 
 		return nil, err
 	}
 	sc.TxIndex = uint64(len(env.txs))
-	env.txs = append(env.txs, tx)
+	env.txs = append(env.txs, tx.WithoutBlobTxSidecar())
 	env.receipts = append(env.receipts, receipt)
 	env.sidecars = append(env.sidecars, sc)
 	env.blobs += len(sc.Blobs)

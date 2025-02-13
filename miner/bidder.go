@@ -238,9 +238,19 @@ func (b *Bidder) bid(work *environment) {
 	// construct bid from work
 	{
 		var txs []hexutil.Bytes
+		var scIndex int
+		scs := work.sidecars.BlobTxSidecarList()
 		for _, tx := range work.txs {
 			var txBytes []byte
 			var err error
+			if tx.Type() == types.BlobTxType {
+				if scIndex >= len(scs) {
+					log.Error("Bidder: BlobTx transaction exceeds sidecar list length", "tx", tx)
+					return
+				}
+				tx = tx.WithBlobTxSidecar(scs[scIndex])
+				scIndex++
+			}
 			txBytes, err = tx.MarshalBinary()
 			if err != nil {
 				log.Error("Bidder: fail to marshal tx", "tx", tx, "err", err)
