@@ -23,6 +23,7 @@ type SendBundleArgs struct {
 	MinTimestamp      *uint64         `json:"minTimestamp"`
 	MaxTimestamp      *uint64         `json:"maxTimestamp"`
 	RevertingTxHashes []common.Hash   `json:"revertingTxHashes"`
+	DroppingTxHashes  []common.Hash   `json:"droppingTxHashes"`
 }
 
 type Bundle struct {
@@ -31,6 +32,7 @@ type Bundle struct {
 	MinTimestamp      uint64
 	MaxTimestamp      uint64
 	RevertingTxHashes []common.Hash
+	DroppingTxHashes  []common.Hash
 
 	Price *big.Int // for bundle compare and prune
 
@@ -69,4 +71,17 @@ func (bundle *Bundle) Hash() common.Hash {
 	h := rlpHash(bundle)
 	bundle.hash.Store(h)
 	return h
+}
+
+func (bundle *Bundle) TxHashes() []common.Hash {
+	hashes := make([]common.Hash, len(bundle.Txs))
+	for i, tx := range bundle.Txs {
+		hashes[i] = tx.Hash()
+	}
+	return hashes
+}
+
+type BundlesItem struct {
+	ReceivedBlock hexutil.Uint64
+	Bundles       [][]common.Hash
 }

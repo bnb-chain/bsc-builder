@@ -14,17 +14,13 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/miner/minerconfig"
 	"github.com/ethereum/go-ethereum/miner/validatorclient"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
 const maxBid int64 = 3
-
-type ValidatorConfig struct {
-	Address common.Address
-	URL     string
-}
 
 type validator struct {
 	*validatorclient.Client
@@ -33,7 +29,7 @@ type validator struct {
 }
 
 type Bidder struct {
-	config        *MevConfig
+	config        *minerconfig.MevConfig
 	delayLeftOver time.Duration
 	engine        consensus.Engine
 	chain         *core.BlockChain
@@ -52,7 +48,7 @@ type Bidder struct {
 	wallet accounts.Wallet
 }
 
-func NewBidder(config *MevConfig, delayLeftOver time.Duration, engine consensus.Engine, eth Backend) *Bidder {
+func NewBidder(config *minerconfig.MevConfig, delayLeftOver time.Duration, engine consensus.Engine, eth Backend) *Bidder {
 	b := &Bidder{
 		config:        config,
 		delayLeftOver: delayLeftOver,
@@ -171,7 +167,7 @@ func (b *Bidder) isRegistered(validator common.Address) bool {
 	return ok
 }
 
-func (b *Bidder) register(cfg ValidatorConfig) {
+func (b *Bidder) register(cfg minerconfig.ValidatorConfig) {
 	b.validatorsMu.Lock()
 	defer b.validatorsMu.Unlock()
 
@@ -235,12 +231,26 @@ func (b *Bidder) bid(work *environment) {
 		return
 	}
 
+	if len(work.txs) > 0 {
+		log.Debug("Bidder: bidding start", "txcount", len(work.txs), "txHash", work.txs[0].Hash())
+	}
+
 	// construct bid from work
 	{
 		var txs []hexutil.Bytes
+		var scIndex int
+		scs := work.sidecars.BlobTxSidecarList()
 		for _, tx := range work.txs {
 			var txBytes []byte
 			var err error
+			if tx.Type() == types.BlobTxType {
+				if scIndex >= len(scs) {
+					log.Error("Bidder: BlobTx transaction exceeds sidecar list length", "tx", tx)
+					return
+				}
+				tx = tx.WithBlobTxSidecar(scs[scIndex])
+				scIndex++
+			}
 			txBytes, err = tx.MarshalBinary()
 			if err != nil {
 				log.Error("Bidder: fail to marshal tx", "tx", tx, "err", err)

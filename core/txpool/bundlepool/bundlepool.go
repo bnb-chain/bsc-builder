@@ -7,11 +7,14 @@ import (
 	"sync"
 	"time"
 
+	mapset "github.com/deckarep/golang-set/v2"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
@@ -73,25 +76,58 @@ type BundlePool struct {
 	config Config
 
 	bundles    map[common.Hash]*types.Bundle
-	bundleHeap BundleHeap
+	bundleHeap BundleHeap // least price heap
 	mu         sync.RWMutex
 
 	slots uint64 // Number of slots currently allocated
 
-	simulator BundleSimulator
+	// bundleMetrics for mev data analyst
+	bundleMetrics   map[int64][][]common.Hash // receivedBlockNumber -> [[bundle tx hashes],[bundle tx hashes]...]
+	bundleMetricsMu sync.RWMutex
+
+	simulator  BundleSimulator
+	blockchain BlockChain
 }
 
-func New(config Config) *BundlePool {
+func (p *BundlePool) GetBlobs(vhashes []common.Hash) ([]*kzg4844.Blob, []*kzg4844.Proof) {
+	return nil, nil
+}
+
+func (p *BundlePool) Clear() {
+}
+
+func New(config Config, chain BlockChain) *BundlePool {
 	// Sanitize the input to ensure no vulnerable gas prices are set
 	config = (&config).sanitize()
 
 	pool := &BundlePool{
-		config:     config,
-		bundles:    make(map[common.Hash]*types.Bundle),
-		bundleHeap: make(BundleHeap, 0),
+		config:        config,
+		bundles:       make(map[common.Hash]*types.Bundle),
+		bundleHeap:    make(BundleHeap, 0),
+		blockchain:    chain,
+		bundleMetrics: make(map[int64][][]common.Hash),
 	}
 
+	go pool.clearLoop()
+
 	return pool
+}
+
+func (p *BundlePool) clearLoop() {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		currentNumber := p.blockchain.CurrentBlock().Number.Int64()
+
+		for number := range p.bundleMetrics {
+			if number <= currentNumber-types.MaxBundleAliveBlock {
+				p.bundleMetricsMu.Lock()
+				delete(p.bundleMetrics, number)
+				p.bundleMetricsMu.Unlock()
+			}
+		}
+	}
 }
 
 func (p *BundlePool) SetBundleSimulator(simulator BundleSimulator) {
@@ -123,21 +159,23 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 
 	price, err := p.simulator.SimulateBundle(bundle)
 	if err != nil {
+		log.Debug("simulation failed when add bundle into bundlepool", "err", err)
 		return err
 	}
+	bundle.Price = price
+	hash := bundle.Hash()
 
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	if price.Cmp(p.minimalBundleGasPrice()) < 0 && p.slots+numSlots(bundle) > p.config.GlobalSlots {
-		return ErrBundleGasPriceLow
-	}
-	bundle.Price = price
-
-	hash := bundle.Hash()
 	if _, ok := p.bundles[hash]; ok {
 		return ErrBundleAlreadyExist
 	}
+
+	if price.Cmp(p.minimalBundleGasPrice()) < 0 && p.slots+numSlots(bundle) > p.config.GlobalSlots {
+		return ErrBundleGasPriceLow
+	}
+
 	for p.slots+numSlots(bundle) > p.config.GlobalSlots {
 		p.drop()
 	}
@@ -147,7 +185,26 @@ func (p *BundlePool) AddBundle(bundle *types.Bundle) error {
 
 	bundleGauge.Update(int64(len(p.bundles)))
 	slotsGauge.Update(int64(p.slots))
+
+	p.bundleMetricsMu.Lock()
+	defer p.bundleMetricsMu.Unlock()
+	currentHeaderNumber := p.blockchain.CurrentBlock().Number.Int64()
+	p.bundleMetrics[currentHeaderNumber] = append(p.bundleMetrics[currentHeaderNumber], bundle.TxHashes())
+
 	return nil
+}
+
+func (p *BundlePool) BundleMetrics(fromBlock, toBlock int64) (ret map[int64][][]common.Hash) {
+	p.bundleMetricsMu.RLock()
+	defer p.bundleMetricsMu.RUnlock()
+
+	for number := fromBlock; number <= toBlock; number++ {
+		if bundles, ok := p.bundleMetrics[number]; ok {
+			ret[number] = bundles
+		}
+	}
+
+	return ret
 }
 
 func (p *BundlePool) GetBundle(hash common.Hash) *types.Bundle {
@@ -235,7 +292,7 @@ func (p *BundlePool) Get(hash common.Hash) *types.Transaction {
 // Add enqueues a batch of transactions into the pool if they are valid. Due
 // to the large transaction churn, add may postpone fully integrating the tx
 // to a later point to batch multiple ones together.
-func (p *BundlePool) Add(txs []*types.Transaction, local bool, sync bool) []error {
+func (p *BundlePool) Add(txs []*types.Transaction, sync bool) []error {
 	return nil
 }
 
@@ -293,7 +350,7 @@ func (p *BundlePool) Status(hash common.Hash) txpool.TxStatus {
 
 func (p *BundlePool) filter(tx *types.Transaction) bool {
 	switch tx.Type() {
-	case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType:
+	case types.LegacyTxType, types.AccessListTxType, types.DynamicFeeTxType, types.SetCodeTxType:
 		return true
 	default:
 		return false
@@ -304,14 +361,50 @@ func (p *BundlePool) reset(newHead *types.Header) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Prune outdated bundles
+	if len(p.bundles) == 0 {
+		bundleGauge.Update(int64(len(p.bundles)))
+		slotsGauge.Update(int64(p.slots))
+		return
+	}
+
+	// Prune outdated bundles or invalid bundles
+	block := p.blockchain.GetBlock(newHead.Hash(), newHead.Number.Uint64())
+	txSet := mapset.NewSet[common.Hash]()
+	if block != nil {
+		txs := block.Transactions()
+		for _, tx := range txs {
+			txSet.Add(tx.Hash())
+		}
+	}
+
+	p.bundleHeap = make(BundleHeap, 0)
 	for hash, bundle := range p.bundles {
 		if (bundle.MaxTimestamp != 0 && newHead.Time > bundle.MaxTimestamp) ||
 			(bundle.MaxBlockNumber != 0 && newHead.Number.Cmp(new(big.Int).SetUint64(bundle.MaxBlockNumber)) > 0) {
 			p.slots -= numSlots(p.bundles[hash])
 			delete(p.bundles, hash)
+		} else {
+			for _, tx := range bundle.Txs {
+				if txSet.Contains(tx.Hash()) && !containsHash(bundle.DroppingTxHashes, tx.Hash()) {
+					p.slots -= numSlots(p.bundles[hash])
+					delete(p.bundles, hash)
+					break
+				}
+			}
+		}
+		if p.bundles[hash] != nil {
+			heap.Push(&p.bundleHeap, bundle)
 		}
 	}
+}
+
+func containsHash(arr []common.Hash, match common.Hash) bool {
+	for _, elem := range arr {
+		if elem == match {
+			return true
+		}
+	}
+	return false
 }
 
 // deleteBundle deletes a bundle from the pool.
