@@ -230,11 +230,13 @@ func (p *BundlePool) PendingBundles(blockNumber uint64, blockTimestamp uint64) [
 		if (bundle.MaxTimestamp != 0 && blockTimestamp > bundle.MaxTimestamp) ||
 			(bundle.MaxBlockNumber != 0 && blockNumber > bundle.MaxBlockNumber) {
 			p.deleteBundle(hash)
+			log.Error("Debug", "delete bundle", "hash", hash, "bundle.MaxTimestamp", bundle.MaxTimestamp, "blockTimestamp", blockTimestamp, "bundle.MaxBlockNumber", bundle.MaxBlockNumber, blockNumber)
 			continue
 		}
 
 		// Roll over future bundles
 		if bundle.MinTimestamp != 0 && blockTimestamp < bundle.MinTimestamp {
+			log.Error("Debug", "delete bundle", "hash", hash, "bundle.MinTimestamp", bundle.MinTimestamp, "blockTimestamp", blockTimestamp)
 			continue
 		}
 
@@ -416,6 +418,7 @@ func (p *BundlePool) deleteBundle(hash common.Hash) {
 
 	p.slots -= numSlots(p.bundles[hash])
 	delete(p.bundles, hash)
+	log.Error("Debug", "bundleHash", hash, "deleted")
 }
 
 // drop removes the bundle with the lowest gas price from the pool.
@@ -425,6 +428,7 @@ func (p *BundlePool) drop() {
 		// the min element in the heap may not exist in the pool as it may be pruned
 		leastPriceBundleHash := heap.Pop(&p.bundleHeap).(*types.Bundle).Hash()
 		if _, ok := p.bundles[leastPriceBundleHash]; ok {
+			log.Error("debug", "bundle removed", "bundleHash", leastPriceBundleHash)
 			p.deleteBundle(leastPriceBundleHash)
 			break
 		}

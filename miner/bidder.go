@@ -299,6 +299,9 @@ func (b *Bidder) bid(work *environment) {
 	b.deleteBestWork(work)
 	log.Info("Bidder: bidding success", "number", work.header.Number, "txs", len(work.txs),
 		"packing_duration", work.duration.Milliseconds())
+	for _, tx := range work.txs {
+		log.Info("debug", "tx Hash has been sent", tx.Hash())
+	}
 }
 
 // isBestWork returns the work is better than the current best work
