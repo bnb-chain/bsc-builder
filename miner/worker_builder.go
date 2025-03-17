@@ -387,6 +387,8 @@ func (w *worker) mergeBundles(
 		}
 
 		log.Info("included bundle",
+			"bundleHash", simulatedBundle.OriginalBundle.Hash(),
+			"blockNumber", env.header.Number.Int64(),
 			"gasUsed", simulatedBundle.BundleGasUsed,
 			"gasPrice", simulatedBundle.BundleGasPrice,
 			"txcount", len(simulatedBundle.OriginalBundle.Txs),

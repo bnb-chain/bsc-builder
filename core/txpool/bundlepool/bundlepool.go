@@ -385,11 +385,13 @@ func (p *BundlePool) reset(newHead *types.Header) {
 			(bundle.MaxBlockNumber != 0 && newHead.Number.Cmp(new(big.Int).SetUint64(bundle.MaxBlockNumber)) > 0) {
 			p.slots -= numSlots(p.bundles[hash])
 			delete(p.bundles, hash)
+			log.Error("bundle deleted", "hash", hash, "bundle.MaxTimestamp", bundle.MaxTimestamp, "newHead.Time", newHead.Time, "bundle.MaxBlockNumber", bundle.MaxBlockNumber, " newHead.Number", newHead.Number.Int64())
 		} else {
 			for _, tx := range bundle.Txs {
 				if txSet.Contains(tx.Hash()) && !containsHash(bundle.DroppingTxHashes, tx.Hash()) {
 					p.slots -= numSlots(p.bundles[hash])
 					delete(p.bundles, hash)
+					log.Error("bundle deleted", "hash", hash)
 					break
 				}
 			}
