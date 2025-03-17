@@ -468,6 +468,11 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			if !w.isRunning() {
 				continue
 			}
+			if interruptCh != nil {
+				interruptCh <- commitInterruptNewHead
+				close(interruptCh)
+				interruptCh = nil
+			}
 			clearPending(head.Header.Number.Uint64())
 			timestamp = time.Now().Unix()
 			if p, ok := w.engine.(*parlia.Parlia); ok {
@@ -830,7 +835,11 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
-		env.gasPool.SubGas(params.SystemTxsGas)
+		if p, ok := w.engine.(*parlia.Parlia); ok {
+			gasReserved := p.EstimateGasReservedForSystemTxs(w.chain, env.header)
+			env.gasPool.SubGas(gasReserved)
+			log.Debug("commitTransactions", "number", env.header.Number.Uint64(), "time", env.header.Time, "EstimateGasReservedForSystemTxs", gasReserved)
+		}
 	}
 
 	var coalescedLogs []*types.Log
@@ -1227,7 +1236,7 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	}
 	// Collect consensus-layer requests if Prague is enabled.
 	var requests [][]byte
-	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) {
+	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) && w.chainConfig.Parlia == nil {
 		requests = [][]byte{}
 		// EIP-6110 deposits
 		if err := core.ParseDepositLogs(&requests, allLogs, w.chainConfig); err != nil {
