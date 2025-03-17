@@ -159,6 +159,8 @@ type task struct {
 	state     *state.StateDB
 	block     *types.Block
 	createdAt time.Time
+
+	miningStartAt time.Time
 }
 
 const (
@@ -468,6 +470,11 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			if !w.isRunning() {
 				continue
 			}
+			if interruptCh != nil {
+				interruptCh <- commitInterruptNewHead
+				close(interruptCh)
+				interruptCh = nil
+			}
 			clearPending(head.Header.Number.Uint64())
 			timestamp = time.Now().Unix()
 			if p, ok := w.engine.(*parlia.Parlia); ok {
@@ -487,7 +494,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			// If sealing is running resubmit a new work cycle periodically to pull in
 			// higher priced transactions. Disable this overhead for pending blocks.
 			if w.isRunning() && ((w.chainConfig.Clique != nil &&
-				w.chainConfig.Clique.Period > 0) || (w.chainConfig.Parlia != nil && w.chainConfig.Parlia.Period > 0)) {
+				w.chainConfig.Clique.Period > 0) || (w.chainConfig.Parlia != nil)) {
 				// Short circuit if no new transaction arrives.
 				commit(commitInterruptResubmit)
 			}
@@ -682,6 +689,9 @@ func (w *worker) resultLoop() {
 				continue
 			}
 			writeBlockTimer.UpdateSince(start)
+			stats := w.chain.GetBlockStats(block.Hash())
+			stats.SendBlockTime.Store(time.Now().UnixMilli())
+			stats.StartMiningTime.Store(task.miningStartAt.UnixMilli())
 			log.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
 				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
 			w.mux.Post(core.NewMinedBlockEvent{Block: block})
@@ -830,7 +840,11 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
-		env.gasPool.SubGas(params.SystemTxsGas)
+		if p, ok := w.engine.(*parlia.Parlia); ok {
+			gasReserved := p.EstimateGasReservedForSystemTxs(w.chain, env.header)
+			env.gasPool.SubGas(gasReserved)
+			log.Debug("commitTransactions", "number", env.header.Number.Uint64(), "time", env.header.Time, "EstimateGasReservedForSystemTxs", gasReserved)
+		}
 	}
 
 	var coalescedLogs []*types.Log
@@ -1227,7 +1241,7 @@ func (w *worker) generateWork(params *generateParams, witness bool) *newPayloadR
 	}
 	// Collect consensus-layer requests if Prague is enabled.
 	var requests [][]byte
-	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) {
+	if w.chainConfig.IsPrague(work.header.Number, work.header.Time) && w.chainConfig.Parlia == nil {
 		requests = [][]byte{}
 		// EIP-6110 deposits
 		if err := core.ParseDepositLogs(&requests, allLogs, w.chainConfig); err != nil {
@@ -1354,7 +1368,7 @@ LOOP:
 			break
 		} else {
 			log.Debug("commitWork stopTimer", "block", work.header.Number,
-				"header time", time.Until(time.Unix(int64(work.header.Time), 0)),
+				"header time", time.UnixMilli(int64(work.header.MilliTimestamp())),
 				"commit delay", *delay, "DelayLeftOver", w.config.DelayLeftOver)
 			stopTimer.Reset(*delay)
 		}
@@ -1401,7 +1415,7 @@ LOOP:
 		newTxsNum := 0
 		// stopTimer was the maximum delay for each fillTransactions
 		// but now it is used to wait until (head.Time - DelayLeftOver) is reached.
-		stopTimer.Reset(time.Until(time.Unix(int64(work.header.Time), 0)) - w.config.DelayLeftOver)
+		stopTimer.Reset(time.Until(time.UnixMilli(int64(work.header.MilliTimestamp()))) - w.config.DelayLeftOver)
 	LOOP_WAIT:
 		// TODO consider whether to take bundle pool status as LOOP_WAIT condition
 		for {
@@ -1467,7 +1481,7 @@ LOOP:
 	if w.bidFetcher != nil && bestWork.header.Difficulty.Cmp(diffInTurn) == 0 {
 		// We want to start sealing the block as late as possible here if mev is enabled, so we could give builder the chance to send their final bid.
 		// Time left till sealing the block.
-		tillSealingTime := time.Until(time.Unix(int64(bestWork.header.Time), 0)) - w.config.DelayLeftOver
+		tillSealingTime := time.Until(time.UnixMilli(int64(bestWork.header.MilliTimestamp()))) - w.config.DelayLeftOver
 		if tillSealingTime > max(100*time.Millisecond, w.config.DelayLeftOver) {
 			// Still a lot of time left, wait for the best bid.
 			// This happens during the peak time of the network, the local block building LOOP would break earlier than
@@ -1579,7 +1593,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		block = block.WithSidecars(env.sidecars)
 
 		select {
-		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now()}:
+		case w.taskCh <- &task{receipts: receipts, state: env.state, block: block, createdAt: time.Now(), miningStartAt: start}:
 			log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
 				"txs", env.tcount, "blobs", env.blobs, "gas", block.GasUsed(), "fees", feesInEther, "elapsed", common.PrettyDuration(time.Since(start)))
 
@@ -1610,15 +1624,15 @@ func (w *worker) getSealingBlock(params *generateParams) *newPayloadResult {
 }
 
 func (w *worker) tryWaitProposalDoneWhenStopping() {
-	posa, ok := w.engine.(consensus.PoSA)
-	// if the consensus is not PoSA, just skip waiting
+	parlia, ok := w.engine.(*parlia.Parlia)
+	// if the consensus is not parlia, just skip waiting
 	if !ok {
 		return
 	}
 
 	currentHeader := w.chain.CurrentBlock()
 	currentBlock := currentHeader.Number.Uint64()
-	startBlock, endBlock, err := posa.NextProposalBlock(w.chain, currentHeader, w.coinbase)
+	startBlock, endBlock, err := parlia.NextProposalBlock(w.chain, currentHeader, w.coinbase)
 	if err != nil {
 		log.Warn("Failed to get next proposal block, skip waiting", "err", err)
 		return
@@ -1630,13 +1644,17 @@ func (w *worker) tryWaitProposalDoneWhenStopping() {
 		log.Warn("next proposal end block has passed, ignore")
 		return
 	}
-	if startBlock > currentBlock && (startBlock-currentBlock)*posa.BlockInterval() > w.config.MaxWaitProposalInSecs {
+	blockInterval, err := parlia.BlockInterval(w.chain, currentHeader)
+	if err != nil {
+		log.Debug("failed to get BlockInterval when tryWaitProposalDoneWhenStopping")
+	}
+	if startBlock > currentBlock && ((startBlock-currentBlock)*blockInterval/1000) > w.config.MaxWaitProposalInSecs {
 		log.Warn("the next proposal start block is too far, just skip waiting")
 		return
 	}
 
 	// wait one more block for safety
-	waitSecs := (endBlock - currentBlock + 1) * posa.BlockInterval()
+	waitSecs := (endBlock - currentBlock + 1) * blockInterval / 1000
 	log.Info("The miner will propose in later, waiting for the proposal to be done",
 		"currentBlock", currentBlock, "nextProposalStart", startBlock, "nextProposalEnd", endBlock, "waitTime", waitSecs)
 	time.Sleep(time.Duration(waitSecs) * time.Second)

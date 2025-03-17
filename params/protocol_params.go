@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	GasLimitBoundDivisor uint64 = 256                // The bound divisor of the gas limit, used in update calculations.
+	GasLimitBoundDivisor uint64 = 1024               // The bound divisor of the gas limit, used in update calculations.
 	MinGasLimit          uint64 = 5000               // Minimum the gas limit may ever be.
 	MaxGasLimit          uint64 = 0x7fffffffffffffff // Maximum the gas limit (2^63-1).
 	GenesisGasLimit      uint64 = 4712388            // Gas limit of the Genesis block.
@@ -38,7 +38,8 @@ const (
 	CallValueTransferGas  uint64 = 9000     // Paid for CALL when the value transfer is non-zero.
 	CallNewAccountGas     uint64 = 25000    // Paid for CALL when the destination address didn't exist prior.
 	TxGas                 uint64 = 21000    // Per transaction not creating a contract. NOTE: Not payable on data of calls between transactions.
-	SystemTxsGas          uint64 = 20000000 // The gas reserved for system txs; only for parlia consensus
+	SystemTxsGasHardLimit uint64 = 20000000 // Maximum gas reserved for system transactions (Parlia consensus only)
+	SystemTxsGasSoftLimit uint64 = 1000000  // Maximum gas reserved for system transactions, excluding validator update transactions (Parlia consensus only)
 	TxGasContractCreation uint64 = 53000    // Per transaction that creates a contract. NOTE: Not payable on data of calls between transactions.
 	TxDataZeroGas         uint64 = 4        // Per byte of data attached to a transaction that equals zero. NOTE: Not payable on data of calls between transactions.
 	QuadCoeffDiv          uint64 = 512      // Divisor for the quadratic particle of the memory cost equation.
@@ -193,9 +194,13 @@ const (
 )
 
 var (
-	MinBlocksForBlobRequests           uint64 = 524288              // it keeps blob data available for ~18.2 days in local, ref: https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-336.md#51-parameters.
-	DefaultExtraReserveForBlobRequests uint64 = 1 * (24 * 3600) / 3 // it adds more time for expired blobs for some request cases, like expiry blob when remote peer is syncing, default 1 day.
-	BreatheBlockInterval               uint64 = 86400               // Controls the interval for updateValidatorSetV2
+	// lorentzBlockInterval                      = 1.5
+	MinTimeDurationForBlobRequests     uint64 = uint64(float64(24*3600) * 18.2)                       // it keeps blob data available for 18.2 days in local
+	MinBlocksForBlobRequests           uint64 = uint64(float64(MinTimeDurationForBlobRequests) / 1.5) // ref: https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP-524.md#421-change-table.
+	DefaultExtraReserveForBlobRequests uint64 = uint64(24 * 3600 / 1.5)                               // it adds more time for expired blobs for some request cases, like expiry blob when remote peer is syncing, default 1 day.
+
+	BreatheBlockInterval uint64 = 24 * 3600 // Controls the interval for updateValidatorSetV2
+
 	// used for testing:
 	//     [1,9] except 2 --> used as turn length directly
 	//                  2 --> use random values to test switching turn length

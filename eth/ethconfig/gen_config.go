@@ -68,6 +68,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		OverridePassedForkTime  *uint64 `toml:",omitempty"`
 		OverridePascal          *uint64 `toml:",omitempty"`
 		OverridePrague          *uint64 `toml:",omitempty"`
+		OverrideLorentz         *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
 		BlobExtraReserve        uint64
 	}
@@ -123,6 +124,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.OverridePassedForkTime = c.OverridePassedForkTime
 	enc.OverridePascal = c.OverridePascal
 	enc.OverridePrague = c.OverridePrague
+	enc.OverrideLorentz = c.OverrideLorentz
 	enc.OverrideVerkle = c.OverrideVerkle
 	enc.BlobExtraReserve = c.BlobExtraReserve
 	return &enc, nil
@@ -182,6 +184,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		OverridePassedForkTime  *uint64 `toml:",omitempty"`
 		OverridePascal          *uint64 `toml:",omitempty"`
 		OverridePrague          *uint64 `toml:",omitempty"`
+		OverrideLorentz         *uint64 `toml:",omitempty"`
 		OverrideVerkle          *uint64 `toml:",omitempty"`
 		BlobExtraReserve        *uint64
 	}
@@ -341,6 +344,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.OverridePrague != nil {
 		c.OverridePrague = dec.OverridePrague
+	}
+	if dec.OverrideLorentz != nil {
+		c.OverrideLorentz = dec.OverrideLorentz
 	}
 	if dec.OverrideVerkle != nil {
 		c.OverrideVerkle = dec.OverrideVerkle
