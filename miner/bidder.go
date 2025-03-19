@@ -3,6 +3,8 @@ package miner
 import (
 	"context"
 	"errors"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
+	"math/big"
 	"sync"
 	"time"
 
@@ -112,8 +114,14 @@ func (b *Bidder) mainLoop() {
 					bidSimulationLeftOver = b.validators[work.coinbase].BidSimulationLeftOver
 				}
 				b.validatorsMu.RUnlock()
-				betterBidBefore = bidutil.BidBetterBefore(parentHeader, b.chain.Config().Parlia.Period, b.delayLeftOver,
-					bidSimulationLeftOver)
+				parlia, _ := b.engine.(*parlia.Parlia)
+				// only `Number` and `ParentHash` are used when `BlockInterval`
+				tmpHeader := &types.Header{ParentHash: work.header.ParentHash, Number: new(big.Int).Add(parentHeader.Number, common.Big1)}
+				blockInterval, err := parlia.BlockInterval(b.chain, tmpHeader)
+				if err != nil {
+					log.Debug("failed to get BlockInterval when bidBetterBefore")
+				}
+				betterBidBefore = bidutil.BidBetterBefore(parentHeader, blockInterval, b.delayLeftOver, bidSimulationLeftOver)
 
 				timer.Reset(0)
 			}

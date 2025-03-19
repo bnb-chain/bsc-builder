@@ -90,6 +90,7 @@ type MevConfig struct {
 
 var DefaultMevConfig = MevConfig{
 	Enabled:               false,
+	GreedyMergeTx:         true,
 	SentryURL:             "",
 	Builders:              nil,
 	ValidatorCommission:   100,
