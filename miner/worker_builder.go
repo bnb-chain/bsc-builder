@@ -36,7 +36,7 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 	// reduce gas limit for builder block
 	fullGasLimit := env.header.GasLimit
 	env.header.GasLimit /= 2
-
+	log.Info("Debug", "Total gas fillTransactionsAndBundles", env.header.GasLimit)
 	defer func() {
 		env.header.GasLimit = fullGasLimit
 	}()
@@ -258,20 +258,21 @@ func (w *worker) generateOrderedBundles(
 		return priceI.Cmp(priceJ) >= 0
 	})
 
+	log.Info("debug", "generateOrderedBundles total Gas1 ", env.header.GasLimit)
 	// recompute bundle gas price based on the same state and current env
 	simulatedBundles, err := w.simulateBundles(env, bundles)
 	if err != nil {
 		log.Error("fail to simulate bundles base on the same state", "err", err)
 		return nil, nil, err
 	}
-
+	log.Info("debug", "generateOrderedBundles total Gas2 ", env.header.GasLimit)
 	// sort bundles according to fresh gas price
 	sort.SliceStable(simulatedBundles, func(i, j int) bool {
 		priceI, priceJ := simulatedBundles[i].BundleGasPrice, simulatedBundles[j].BundleGasPrice
 
 		return priceI.Cmp(priceJ) >= 0
 	})
-
+	log.Info("debug", "generateOrderedBundles total Gas3 ", env.header.GasLimit)
 	// merge bundles based on iterative state
 	includedTxs, mergedBundle, err := w.mergeBundles(env, simulatedBundles)
 	if err != nil {
@@ -339,9 +340,10 @@ func (w *worker) mergeBundles(
 	env *environment,
 	bundles []*types.SimulatedBundle,
 ) (types.Transactions, *types.SimulatedBundle, error) {
+	log.Info("debug", "mergeBundles total Gas1 ", env.header.GasLimit)
 	currentState := env.state.Copy()
 	gasPool := prepareGasPool(env.header.GasLimit)
-
+	log.Info("debug", "mergeBundles gasPool ", gasPool)
 	includedTxs := types.Transactions{}
 	mergedBundle := types.SimulatedBundle{
 		BundleGasFees:   new(big.Int),
@@ -351,7 +353,7 @@ func (w *worker) mergeBundles(
 	}
 
 	evm := vm.NewEVM(core.NewEVMBlockContext(env.header, w.chain, &env.coinbase), env.state.Copy(), w.chainConfig, vm.Config{})
-
+	log.Info("debug", "mergeBundles gasPool 1", gasPool)
 	for _, bundle := range bundles {
 		// if we don't have enough gas for any further transactions then we're done
 		if gasPool.Gas() < smallBundleGas {
@@ -364,7 +366,7 @@ func (w *worker) mergeBundles(
 		// the floor gas price is 99/100 what was simulated at the top of the block
 		floorGasPrice := new(big.Int).Mul(bundle.BundleGasPrice, big.NewInt(99))
 		floorGasPrice = floorGasPrice.Div(floorGasPrice, big.NewInt(100))
-		log.Info("Debug", "hash", bundle.OriginalBundle.Hash().String(), gasPool.String())
+		log.Info("Debug", "hash", bundle.OriginalBundle.Hash().String(), "gas pool2", gasPool.String())
 		simulatedBundle, err := w.simulateBundle(evm, env.header, bundle.OriginalBundle, currentState, gasPool, len(includedTxs), true, false)
 
 		if err != nil || simulatedBundle.BundleGasPrice.Cmp(floorGasPrice) <= 0 {
