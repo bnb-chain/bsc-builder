@@ -364,14 +364,14 @@ func (w *worker) mergeBundles(
 		// the floor gas price is 99/100 what was simulated at the top of the block
 		floorGasPrice := new(big.Int).Mul(bundle.BundleGasPrice, big.NewInt(99))
 		floorGasPrice = floorGasPrice.Div(floorGasPrice, big.NewInt(100))
-
+		log.Info("Debug", "hash", bundle.OriginalBundle.Hash().String(), gasPool.String())
 		simulatedBundle, err := w.simulateBundle(evm, env.header, bundle.OriginalBundle, currentState, gasPool, len(includedTxs), true, false)
 
 		if err != nil || simulatedBundle.BundleGasPrice.Cmp(floorGasPrice) <= 0 {
 			currentState = prevState
 			gasPool = prevGasPool
 
-			log.Error("failed to merge bundle", "floorGasPrice", floorGasPrice.String(), "err", err)
+			log.Error("failed to merge bundle", "floorGasPrice", floorGasPrice.String(), "err", err, "gasPool", gasPool.String())
 			continue
 		}
 
@@ -428,7 +428,7 @@ func (w *worker) simulateBundle(
 		receipt, err := core.ApplyTransaction(evm, gasPool, state, header, tx, &tempGasUsed)
 
 		if err != nil {
-			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err)
+			log.Warn("fail to simulate bundle", "hash", bundle.Hash().String(), "err", err, "txGas", tx.Gas(), "gasPool", gasPool.String())
 
 			if containsHash(bundle.DroppingTxHashes, tx.Hash()) {
 				log.Warn("drop tx in bundle", "hash", tx.Hash().String())
