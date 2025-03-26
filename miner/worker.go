@@ -1381,7 +1381,7 @@ LOOP:
 
 		// Fill pending transactions from the txpool into the block.
 		fillStart := time.Now()
-		log.Info("Debug", "total gas", work.gasPool.String())
+		log.Info("Debug", "total gas", work.header.GasLimit)
 		err = w.fillTransactionsAndBundles(interruptCh, work, stopTimer)
 		fillDuration := time.Since(fillStart)
 		work.duration = fillDuration
