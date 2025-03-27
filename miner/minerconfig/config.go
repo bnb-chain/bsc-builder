@@ -86,6 +86,8 @@ type MevConfig struct {
 	BuilderEnabled bool              // Whether to enable bidder or not
 	Validators     []ValidatorConfig // The list of validators
 	BuilderAccount common.Address    // The account of the bidder
+
+	GasLimitRate float64
 }
 
 var DefaultMevConfig = MevConfig{
@@ -97,4 +99,5 @@ var DefaultMevConfig = MevConfig{
 	BuilderEnabled:        false,
 	Validators:            nil,
 	BuilderAccount:        common.Address{},
+	GasLimitRate:          1,
 }

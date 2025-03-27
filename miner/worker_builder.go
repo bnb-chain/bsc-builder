@@ -35,7 +35,8 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 
 	// reduce gas limit for builder block
 	fullGasLimit := env.header.GasLimit
-	env.header.GasLimit /= 2
+	gasLimit := float64(env.header.GasLimit) * w.config.Mev.GasLimitRate
+	env.header.GasLimit = uint64(gasLimit)
 
 	defer func() {
 		env.header.GasLimit = fullGasLimit
