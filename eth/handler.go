@@ -83,11 +83,14 @@ type txPool interface {
 	Get(hash common.Hash) *types.Transaction
 
 	// Add should add the given transactions to the pool.
-	Add(txs []*types.Transaction, sync bool) []error
+	Add(txs []*types.Transaction, sync bool, private bool) []error
 
 	// Pending should return pending transactions.
 	// The slice should be modifiable by the caller.
 	Pending(filter txpool.PendingFilter) map[common.Address][]*txpool.LazyTransaction
+
+	// IsPrivateTxHash returns true if the transaction is a private transaction.
+	IsPrivateTxHash(hash common.Hash) bool
 
 	// SubscribeTransactions subscribes to new transaction events. The subscriber
 	// can decide whether to receive notifications only for newly seen transactions
@@ -305,7 +308,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		return p.RequestTxs(hashes)
 	}
 	addTxs := func(peer string, txs []*types.Transaction) []error {
-		errors := h.txpool.Add(txs, false)
+		errors := h.txpool.Add(txs, false, false)
 		for _, err := range errors {
 			if err == txpool.ErrInBlackList {
 				accountBlacklistPeerCounter.Inc(1)
