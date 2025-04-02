@@ -829,12 +829,20 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 		snap = env.state.Snapshot()
 		gp   = env.gasPool.Gas()
 	)
+	gasPrice, err := tx.EffectiveGasTip(env.header.BaseFee)
+	if err != nil {
+		return nil, err
+	}
 
 	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, receiptProcessors...)
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
 		env.gasPool.SetGas(gp)
 	}
+
+	gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
+	env.profit.Add(env.profit, gasUsed.Mul(gasUsed, gasPrice))
+
 	return receipt, err
 }
 
