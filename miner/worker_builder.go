@@ -589,6 +589,6 @@ func containsHash(arr []common.Hash, match common.Hash) bool {
 
 func prepareGasPool(gasLimit uint64) *core.GasPool {
 	gasPool := new(core.GasPool).AddGas(gasLimit)
-	gasPool.SubGas(params.SystemTxsGasHardLimit) // reserve gas for system txs(keep align with mainnet)
+	gasPool.SubGas(params.SystemTxsGasSoftLimit) // reserve gas for system txs(keep align with mainnet)
 	return gasPool
 }
