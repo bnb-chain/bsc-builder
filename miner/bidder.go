@@ -3,6 +3,8 @@ package miner
 import (
 	"context"
 	"errors"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
+	"math/big"
 	"sync"
 	"time"
 
@@ -112,7 +114,7 @@ func (b *Bidder) mainLoop() {
 					bidSimulationLeftOver = b.validators[work.coinbase].BidSimulationLeftOver
 				}
 				b.validatorsMu.RUnlock()
-				betterBidBefore = bidutil.BidBetterBefore(parentHeader, b.chain.Config().Parlia.Period, b.delayLeftOver,
+				betterBidBefore = bidutil.BidBetterBefore(parentHeader, b.getBlockInterval(parentHeader), b.delayLeftOver,
 					bidSimulationLeftOver)
 
 				timer.Reset(0)
@@ -352,4 +354,19 @@ func (b *Bidder) signBid(bid *types.RawBid) ([]byte, error) {
 // enabled returns whether the bid is enabled
 func (b *Bidder) enabled() bool {
 	return b.config.BuilderEnabled
+}
+
+// get block interval for current block by using parent header
+func (b *Bidder) getBlockInterval(parentHeader *types.Header) uint64 {
+	if parentHeader == nil {
+		return 1500 // lorentzBlockInterval
+	}
+	parlia, _ := b.engine.(*parlia.Parlia)
+	// only `Number` and `ParentHash` are used when `BlockInterval`
+	tmpHeader := &types.Header{ParentHash: parentHeader.Hash(), Number: new(big.Int).Add(parentHeader.Number, common.Big1)}
+	blockInterval, err := parlia.BlockInterval(b.chain, tmpHeader)
+	if err != nil {
+		log.Debug("failed to get BlockInterval when bidBetterBefore")
+	}
+	return blockInterval
 }
