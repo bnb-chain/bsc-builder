@@ -1405,16 +1405,16 @@ LOOP:
 			// work.discard()
 			log.Debug("commitWork abort", "err", err)
 			return
-		case errors.Is(err, errBlockInterruptedByRecommit):
-			fallthrough
-		case errors.Is(err, errBlockInterruptedByTimeout):
-			fallthrough
-		case errors.Is(err, errBlockInterruptedByOutOfGas):
-			// break the loop to get the best work
+		case errors.Is(err, errBlockInterruptedByRecommit),
+			errors.Is(err, errBlockInterruptedByTimeout):
 			log.Debug("commitWork finish", "reason", err)
 			break LOOP
+		case errors.Is(err, errBlockInterruptedByOutOfGas):
+			log.Debug("commitWork finish", "reason", err)
+			// still bit a work, that means the block is full.
+			w.bidder.newWork(work)
+			break LOOP
 		}
-
 		w.bidder.newWork(work)
 
 		if interruptCh == nil || stopTimer == nil {
