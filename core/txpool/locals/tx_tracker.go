@@ -74,18 +74,23 @@ func New(journalPath string, journalTime time.Duration, chainConfig *params.Chai
 
 // Track adds a transaction to the tracked set.
 // Note: blob-type transactions are ignored.
+// Note: private transactions are ignored.
 func (tracker *TxTracker) Track(tx *types.Transaction) {
 	tracker.TrackAll([]*types.Transaction{tx})
 }
 
 // TrackAll adds a list of transactions to the tracked set.
 // Note: blob-type transactions are ignored.
+// Note: private transactions are ignored.
 func (tracker *TxTracker) TrackAll(txs []*types.Transaction) {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
 
 	for _, tx := range txs {
 		if tx.Type() == types.BlobTxType {
+			continue
+		}
+		if tracker.pool.IsPrivateTxHash(tx.Hash()) {
 			continue
 		}
 		// If we're already tracking it, it's a no-op
@@ -195,7 +200,7 @@ func (tracker *TxTracker) loop() {
 			checkJournal := tracker.journal != nil && time.Since(lastJournal) > tracker.rejournal
 			resubmits, rejournal := tracker.recheck(checkJournal)
 			if len(resubmits) > 0 {
-				tracker.pool.Add(resubmits, false)
+				tracker.pool.Add(resubmits, false, false)
 			}
 			if checkJournal {
 				// Lock to prevent journal.rotate <-> journal.insert (via TrackAll) conflicts

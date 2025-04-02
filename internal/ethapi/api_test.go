@@ -610,7 +610,7 @@ func (b testBackend) SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHeade
 func (b testBackend) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription {
 	panic("implement me")
 }
-func (b testBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
+func (b testBackend) SendTx(ctx context.Context, signedTx *types.Transaction, private bool) error {
 	panic("implement me")
 }
 func (b testBackend) SendBundle(ctx context.Context, bundle *types.Bundle) error {
