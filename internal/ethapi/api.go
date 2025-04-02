@@ -54,14 +54,6 @@ import (
 	"github.com/holiman/uint256"
 )
 
-// max is a helper function which returns the larger of the two given integers.
-func max(a, b int64) int64 {
-	if a > b {
-		return a
-	}
-	return b
-}
-
 const UnHealthyTimeout = 5 * time.Second
 
 // estimateGasErrorRatio is the amount of overestimation eth_estimateGas is
@@ -573,7 +565,8 @@ func (api *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValida
 	lastHeader := latestHeader
 	confirmedValSet := make(map[common.Address]struct{}, valLen)
 	confirmedValSet[lastHeader.Coinbase] = struct{}{}
-	for count := 1; int64(len(confirmedValSet)) < verifiedValidatorNum && count <= int(parliaConfig.Epoch) && lastHeader.Number.Int64() > max(fastFinalizedHeader.Number.Int64(), 1); count++ {
+	epochLength := int(500) // TODO(Nathan)(BEP-524 Phase Two): use `maxwellEpochLength` instead
+	for count := 1; int64(len(confirmedValSet)) < verifiedValidatorNum && count <= epochLength && lastHeader.Number.Int64() > max(fastFinalizedHeader.Number.Int64(), 1); count++ {
 		lastHeader, err = api.b.HeaderByHash(ctx, lastHeader.ParentHash)
 		if err != nil { // impossible
 			return 0, err
@@ -1439,6 +1432,7 @@ func RPCMarshalBlock(block *types.Block, inclTx bool, fullTx bool, config *param
 func (api *BlockChainAPI) rpcMarshalHeader(ctx context.Context, header *types.Header) map[string]interface{} {
 	fields := RPCMarshalHeader(header)
 	fields["totalDifficulty"] = (*hexutil.Big)(api.b.GetTd(ctx, header.Hash()))
+	fields["milliTimestamp"] = hexutil.Uint64(header.MilliTimestamp())
 	return fields
 }
 
@@ -1448,6 +1442,7 @@ func (api *BlockChainAPI) rpcMarshalBlock(ctx context.Context, b *types.Block, i
 	fields := RPCMarshalBlock(b, inclTx, fullTx, api.b.ChainConfig())
 	if inclTx {
 		fields["totalDifficulty"] = (*hexutil.Big)(api.b.GetTd(ctx, b.Hash()))
+		fields["milliTimestamp"] = hexutil.Uint64(b.Header().MilliTimestamp())
 	}
 	return fields, nil
 }
