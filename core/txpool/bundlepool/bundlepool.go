@@ -217,6 +217,7 @@ func (p *BundlePool) GetBundle(hash common.Hash) *types.Bundle {
 func (p *BundlePool) PruneBundle(hash common.Hash) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	log.Error("Debug", "bundle deleted hash", hash)
 	p.deleteBundle(hash)
 }
 
@@ -229,6 +230,7 @@ func (p *BundlePool) PendingBundles(blockNumber uint64, blockTimestamp uint64) [
 		// Prune outdated bundles
 		if (bundle.MaxTimestamp != 0 && blockTimestamp > bundle.MaxTimestamp) ||
 			(bundle.MaxBlockNumber != 0 && blockNumber > bundle.MaxBlockNumber) {
+			log.Error("Debug", "bundle deleted hash", hash, "bundle.MaxTimestamp", bundle.MaxTimestamp, "blockTimestamp", blockTimestamp, "bundle.MaxBlockNumber", bundle.MaxBlockNumber, "blockNumber", blockNumber)
 			p.deleteBundle(hash)
 			continue
 		}
@@ -425,6 +427,7 @@ func (p *BundlePool) drop() {
 		// the min element in the heap may not exist in the pool as it may be pruned
 		leastPriceBundleHash := heap.Pop(&p.bundleHeap).(*types.Bundle).Hash()
 		if _, ok := p.bundles[leastPriceBundleHash]; ok {
+			log.Error("Debug", "bundle deleted hash", leastPriceBundleHash)
 			p.deleteBundle(leastPriceBundleHash)
 			break
 		}
