@@ -22,7 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-const maxBid int64 = 3
+const maxBid int64 = 2
 
 type validator struct {
 	*validatorclient.Client
