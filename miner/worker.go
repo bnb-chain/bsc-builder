@@ -838,6 +838,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
 		env.gasPool.SetGas(gp)
+		return nil, err
 	}
 
 	gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
