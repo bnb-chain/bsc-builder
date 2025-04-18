@@ -829,12 +829,21 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction, recei
 		snap = env.state.Snapshot()
 		gp   = env.gasPool.Gas()
 	)
+	gasPrice, err := tx.EffectiveGasTip(env.header.BaseFee)
+	if err != nil {
+		return nil, err
+	}
 
 	receipt, err := core.ApplyTransaction(env.evm, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, receiptProcessors...)
 	if err != nil {
 		env.state.RevertToSnapshot(snap)
 		env.gasPool.SetGas(gp)
+		return nil, err
 	}
+
+	gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
+	env.profit.Add(env.profit, gasUsed.Mul(gasUsed, gasPrice))
+
 	return receipt, err
 }
 
@@ -1397,16 +1406,16 @@ LOOP:
 			// work.discard()
 			log.Debug("commitWork abort", "err", err)
 			return
-		case errors.Is(err, errBlockInterruptedByRecommit):
-			fallthrough
-		case errors.Is(err, errBlockInterruptedByTimeout):
-			fallthrough
-		case errors.Is(err, errBlockInterruptedByOutOfGas):
-			// break the loop to get the best work
+		case errors.Is(err, errBlockInterruptedByRecommit),
+			errors.Is(err, errBlockInterruptedByTimeout):
 			log.Debug("commitWork finish", "reason", err)
 			break LOOP
+		case errors.Is(err, errBlockInterruptedByOutOfGas):
+			log.Debug("commitWork finish", "reason", err)
+			// still bit a work, that means the block is full.
+			w.bidder.newWork(work)
+			break LOOP
 		}
-
 		w.bidder.newWork(work)
 
 		if interruptCh == nil || stopTimer == nil {

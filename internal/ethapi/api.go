@@ -2082,7 +2082,7 @@ func (api *TransactionAPI) sign(addr common.Address, tx *types.Transaction) (*ty
 }
 
 // SubmitTransaction is a helper function that submits tx to txPool and logs a message.
-func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (common.Hash, error) {
+func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction, private bool) (common.Hash, error) {
 	// If the transaction fee cap is already specified, ensure the
 	// fee of the given transaction is _reasonable_.
 	if err := checkTxFee(tx.GasPrice(), tx.Gas(), b.RPCTxFeeCap()); err != nil {
@@ -2092,7 +2092,7 @@ func SubmitTransaction(ctx context.Context, b Backend, tx *types.Transaction) (c
 		// Ensure only eip155 signed transactions are submitted if EIP155Required is set.
 		return common.Hash{}, errors.New("only replay-protected (EIP-155) transactions allowed over RPC")
 	}
-	if err := b.SendTx(ctx, tx); err != nil {
+	if err := b.SendTx(ctx, tx, private); err != nil {
 		return common.Hash{}, err
 	}
 	// Print a log with full tx details for manual investigations and interventions
@@ -2145,7 +2145,7 @@ func (api *TransactionAPI) SendTransaction(ctx context.Context, args Transaction
 	if err != nil {
 		return common.Hash{}, err
 	}
-	return SubmitTransaction(ctx, api.b, signed)
+	return SubmitTransaction(ctx, api.b, signed, false)
 }
 
 // FillTransaction fills the defaults (nonce, gas, gasPrice or 1559 fields)
@@ -2174,7 +2174,7 @@ func (api *TransactionAPI) SendRawTransaction(ctx context.Context, input hexutil
 	if err := tx.UnmarshalBinary(input); err != nil {
 		return common.Hash{}, err
 	}
-	return SubmitTransaction(ctx, api.b, tx)
+	return SubmitTransaction(ctx, api.b, tx, false)
 }
 
 // SendRawTransactionConditional will add the signed transaction to the transaction pool.
@@ -2192,7 +2192,20 @@ func (api *TransactionAPI) SendRawTransactionConditional(ctx context.Context, in
 	if err := TxOptsCheck(opts, header.Number.Uint64(), header.Time, state); err != nil {
 		return common.Hash{}, err
 	}
-	return SubmitTransaction(ctx, api.b, tx)
+	return SubmitTransaction(ctx, api.b, tx, false)
+}
+
+// SendPrivateRawTransaction will add the signed transaction to the transaction pool,
+// without broadcasting the transaction to its peers, and mark the transaction to avoid
+// future syncs.
+//
+// See SendRawTransaction.
+func (s *TransactionAPI) SendPrivateRawTransaction(ctx context.Context, input hexutil.Bytes) (common.Hash, error) {
+	tx := new(types.Transaction)
+	if err := tx.UnmarshalBinary(input); err != nil {
+		return common.Hash{}, err
+	}
+	return SubmitTransaction(ctx, s.b, tx, true)
 }
 
 // Sign calculates an ECDSA signature for:
@@ -2337,7 +2350,7 @@ func (api *TransactionAPI) Resend(ctx context.Context, sendArgs TransactionArgs,
 			if err != nil {
 				return common.Hash{}, err
 			}
-			if err = api.b.SendTx(ctx, signedTx); err != nil {
+			if err = api.b.SendTx(ctx, signedTx, false); err != nil {
 				return common.Hash{}, err
 			}
 			return signedTx.Hash(), nil

@@ -3,10 +3,11 @@ package miner
 import (
 	"context"
 	"errors"
-	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"math/big"
 	"sync"
 	"time"
+
+	"github.com/ethereum/go-ethereum/consensus/parlia"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -190,6 +191,7 @@ func (b *Bidder) register(cfg minerconfig.ValidatorConfig) {
 		BidSimulationLeftOver: params.BidSimulationLeftOver,
 		GasCeil:               params.GasCeil,
 	}
+	log.Info("Bidder: register", "validator", cfg.Address, "params", params)
 }
 
 func (b *Bidder) unregister(validator common.Address) {

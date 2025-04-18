@@ -292,7 +292,7 @@ func (p *BundlePool) Get(hash common.Hash) *types.Transaction {
 // Add enqueues a batch of transactions into the pool if they are valid. Due
 // to the large transaction churn, add may postpone fully integrating the tx
 // to a later point to batch multiple ones together.
-func (p *BundlePool) Add(txs []*types.Transaction, sync bool) []error {
+func (p *BundlePool) Add(txs []*types.Transaction, sync bool, private bool) []error {
 	return nil
 }
 
@@ -300,6 +300,11 @@ func (p *BundlePool) Add(txs []*types.Transaction, sync bool) []error {
 // account and sorted by nonce.
 func (p *BundlePool) Pending(filter txpool.PendingFilter) map[common.Address][]*txpool.LazyTransaction {
 	return nil
+}
+
+// IsPrivateTxHash returns true if the transaction is a private transaction.
+func (p *BundlePool) IsPrivateTxHash(hash common.Hash) bool {
+	return false
 }
 
 // SubscribeTransactions subscribes to new transaction events.

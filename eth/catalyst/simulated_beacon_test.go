@@ -114,7 +114,7 @@ func testSimulatedBeaconSendWithdrawals(t *testing.T) {
 		}
 		txs[tx.Hash()] = tx
 
-		if err := ethService.APIBackend.SendTx(context.Background(), tx); err != nil {
+		if err := ethService.APIBackend.SendTx(context.Background(), tx, false); err != nil {
 			t.Fatal("SendTx failed", err)
 		}
 	}
@@ -182,7 +182,7 @@ func TestOnDemandSpam(t *testing.T) {
 			if err != nil {
 				panic(fmt.Sprintf("error signing transaction: %v", err))
 			}
-			if err := eth.TxPool().Add([]*types.Transaction{tx}, false)[0]; err != nil {
+			if err := eth.TxPool().Add([]*types.Transaction{tx}, false, false)[0]; err != nil {
 				panic(fmt.Sprintf("error adding txs to pool: %v", err))
 			}
 		}
