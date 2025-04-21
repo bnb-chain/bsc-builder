@@ -75,8 +75,6 @@ var (
 		utils.SmartCardDaemonPathFlag,
 		utils.RialtoHash,
 		utils.OverridePassedForkTime,
-		utils.OverridePascal,
-		utils.OverridePrague,
 		utils.OverrideLorentz,
 		utils.OverrideVerkle,
 		utils.OverrideFullImmutabilityThreshold,
