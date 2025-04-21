@@ -20,12 +20,13 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/holiman/uint256"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/event"
-	"github.com/holiman/uint256"
 )
 
 // LazyTransaction contains a small subset of the transaction properties that is
@@ -175,4 +176,25 @@ type SubPool interface {
 
 	// Clear removes all tracked transactions from the pool
 	Clear()
+}
+
+type BundleSubpool interface {
+	// FilterBundle is a selector used to decide whether a bundle would be added
+	// to this particular subpool.
+	FilterBundle(bundle *types.Bundle) bool
+
+	// AddBundle enqueues a bundle into the pool if it is valid.
+	AddBundle(bundle *types.Bundle) error
+
+	// PendingBundles retrieves all currently processable bundles.
+	PendingBundles(blockNumber uint64, blockTimestamp uint64) []*types.Bundle
+
+	// AllBundles returns all the bundles currently in the pool.
+	AllBundles() []*types.Bundle
+
+	// PruneBundle removes a bundle from the pool.
+	PruneBundle(hash common.Hash)
+
+	// BundleMetrics queries the metrics in the bundle pool.
+	BundleMetrics(fromBlock, toBlock int64) map[int64][][]common.Hash
 }

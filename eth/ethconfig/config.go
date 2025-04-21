@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
+	"github.com/ethereum/go-ethereum/core/txpool/bundlepool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -159,8 +160,9 @@ type Config struct {
 	Miner minerconfig.Config
 
 	// Transaction pool options
-	TxPool   legacypool.Config
-	BlobPool blobpool.Config
+	TxPool     legacypool.Config
+	BlobPool   blobpool.Config
+	BundlePool bundlepool.Config
 
 	// Gas Price Oracle options
 	GPO gasprice.Config

@@ -8,6 +8,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/txpool/blobpool"
+	"github.com/ethereum/go-ethereum/core/txpool/bundlepool"
 	"github.com/ethereum/go-ethereum/core/txpool/legacypool"
 	"github.com/ethereum/go-ethereum/eth/gasprice"
 	"github.com/ethereum/go-ethereum/miner/minerconfig"
@@ -56,6 +57,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		Miner                   minerconfig.Config
 		TxPool                  legacypool.Config
 		BlobPool                blobpool.Config
+		BundlePool              bundlepool.Config
 		GPO                     gasprice.Config
 		EnablePreimageRecording bool
 		VMTrace                 string
@@ -110,6 +112,7 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.Miner = c.Miner
 	enc.TxPool = c.TxPool
 	enc.BlobPool = c.BlobPool
+	enc.BundlePool = c.BundlePool
 	enc.GPO = c.GPO
 	enc.EnablePreimageRecording = c.EnablePreimageRecording
 	enc.VMTrace = c.VMTrace
@@ -168,6 +171,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		Miner                   *minerconfig.Config
 		TxPool                  *legacypool.Config
 		BlobPool                *blobpool.Config
+		BundlePool              *bundlepool.Config
 		GPO                     *gasprice.Config
 		EnablePreimageRecording *bool
 		VMTrace                 *string
@@ -304,6 +308,9 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	}
 	if dec.BlobPool != nil {
 		c.BlobPool = *dec.BlobPool
+	}
+	if dec.BundlePool != nil {
+		c.BundlePool = *dec.BundlePool
 	}
 	if dec.GPO != nil {
 		c.GPO = *dec.GPO

@@ -23,12 +23,17 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/systemcontracts"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -41,6 +46,7 @@ import (
 type Backend interface {
 	BlockChain() *core.BlockChain
 	TxPool() *txpool.TxPool
+	AccountManager() *accounts.Manager
 }
 
 // Miner is the main object which takes care of submitting new work to consensus
@@ -247,4 +253,134 @@ func (miner *Miner) BuildPayload(args *BuildPayloadArgs, witness bool) (*Payload
 
 func (miner *Miner) GasCeil() uint64 {
 	return miner.worker.getGasCeil()
+}
+
+func (miner *Miner) SimulateBundle(bundle *types.Bundle) (*big.Int, error) {
+	parent := miner.eth.BlockChain().CurrentBlock()
+
+	parentState, err := miner.eth.BlockChain().StateAt(parent.Root)
+	if err != nil {
+		return nil, err
+	}
+
+	env, err := miner.prepareSimulationEnv(parent, parentState)
+	if err != nil {
+		return nil, err
+	}
+
+	s, err := miner.worker.simulateBundle(env.evm, env.header, bundle, parentState, env.gasPool, 0, true, true)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.BundleGasPrice, nil
+}
+
+func (miner *Miner) SimulateGaslessBundle(bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error) {
+	parent := miner.eth.BlockChain().CurrentBlock()
+
+	parentState, err := miner.eth.BlockChain().StateAt(parent.Root)
+	if err != nil {
+		return nil, err
+	}
+
+	env, err := miner.prepareSimulationEnv(parent, parentState)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := miner.worker.simulateGaslessBundle(env, bundle)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func (miner *Miner) prepareSimulationEnv(parent *types.Header, state *state.StateDB) (*environment, error) {
+	timestamp := time.Now().Unix()
+	if parent.Time >= uint64(timestamp) {
+		timestamp = int64(parent.Time + 1)
+	}
+
+	// take the next in-turn validator as coinbase
+	coinbase, err := miner.worker.engine.NextInTurnValidator(miner.worker.chain, parent)
+	if err != nil {
+		log.Error("Failed to get next in-turn validator", "err", err)
+		return nil, err
+	}
+
+	// set validator to the consensus engine
+	if posa, ok := miner.worker.engine.(consensus.PoSA); ok {
+		posa.SetValidator(coinbase)
+	} else {
+		log.Error("Consensus engine does not support validator setting")
+		return nil, err
+	}
+
+	header := &types.Header{
+		ParentHash: parent.Hash(),
+		Number:     new(big.Int).Add(parent.Number, common.Big1),
+		GasLimit:   core.CalcGasLimit(parent.GasLimit, miner.worker.config.GasCeil),
+		Extra:      miner.worker.extra,
+		Time:       uint64(timestamp),
+		Coinbase:   coinbase,
+	}
+
+	// Set baseFee and GasLimit if we are on an EIP-1559 chain
+	if miner.worker.chainConfig.IsLondon(header.Number) {
+		header.BaseFee = eip1559.CalcBaseFee(miner.worker.chainConfig, parent)
+		if miner.worker.chainConfig.Parlia == nil && !miner.worker.chainConfig.IsLondon(parent.Number) {
+			parentGasLimit := parent.GasLimit * miner.worker.chainConfig.ElasticityMultiplier()
+			header.GasLimit = core.CalcGasLimit(parentGasLimit, miner.worker.config.GasCeil)
+		}
+	}
+
+	if err := miner.worker.engine.Prepare(miner.eth.BlockChain(), header); err != nil {
+		log.Error("Failed to prepare header for sealing", "err", err)
+		return nil, err
+	}
+
+	// Apply EIP-4844, EIP-4788.
+	if miner.worker.chainConfig.IsCancun(header.Number, header.Time) {
+		var excessBlobGas uint64
+		if miner.worker.chainConfig.IsCancun(parent.Number, parent.Time) {
+			excessBlobGas = eip4844.CalcExcessBlobGas(miner.worker.chainConfig, parent, header.Time)
+		}
+		header.BlobGasUsed = new(uint64)
+		header.ExcessBlobGas = &excessBlobGas
+		header.WithdrawalsHash = &types.EmptyWithdrawalsHash
+		if miner.worker.chainConfig.IsBohr(header.Number, header.Time) {
+			header.ParentBeaconRoot = new(common.Hash)
+		}
+		if miner.worker.chainConfig.IsPrague(header.Number, header.Time) {
+			header.RequestsHash = &types.EmptyRequestsHash
+		}
+	}
+
+	env := &environment{
+		signer:   types.MakeSigner(miner.worker.chainConfig, header.Number, header.Time),
+		state:    state.Copy(),
+		coinbase: coinbase,
+		header:   header,
+		evm:      vm.NewEVM(core.NewEVMBlockContext(header, miner.worker.chain, &coinbase), state, miner.worker.chainConfig, vm.Config{}),
+		gasPool:  prepareGasPool(header.GasLimit),
+		profit:   big.NewInt(0),
+	}
+	env.witness = env.state.Witness()
+
+	// Handle upgrade build-in system contract code
+	systemcontracts.TryUpdateBuildInSystemContract(miner.worker.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
+
+	if header.ParentBeaconRoot != nil {
+		core.ProcessBeaconBlockRoot(*header.ParentBeaconRoot, env.evm)
+	}
+
+	if miner.worker.chainConfig.IsPrague(header.Number, header.Time) {
+		core.ProcessParentBlockHash(header.ParentHash, env.evm)
+	}
+
+	env.size = uint32(env.header.Size())
+
+	return env, nil
 }

@@ -606,6 +606,12 @@ func (s Transactions) EncodeIndex(i int, w *bytes.Buffer) {
 	}
 }
 
+func (s Transactions) Remove(idx int) Transactions {
+	copy(s[idx:], s[idx+1:])
+	s[len(s)-1] = nil
+	return s[:len(s)-1]
+}
+
 // TxDifference returns a new set of transactions that are present in a but not in b.
 func TxDifference(a, b Transactions) Transactions {
 	keep := make(Transactions, 0, len(a))

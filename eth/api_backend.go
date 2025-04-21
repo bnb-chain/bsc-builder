@@ -20,11 +20,13 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"sort"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/consensus/parlia"
@@ -293,6 +295,57 @@ func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction)
 		locals.Track(signedTx)
 	}
 	return b.eth.txPool.Add([]*types.Transaction{signedTx}, false)[0]
+}
+
+func (b *EthAPIBackend) SendBundle(ctx context.Context, bundle *types.Bundle) error {
+	return b.eth.txPool.AddBundle(bundle)
+}
+
+func (b *EthAPIBackend) SimulateGaslessBundle(bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error) {
+	return b.Miner().SimulateGaslessBundle(bundle)
+}
+
+func (b *EthAPIBackend) BundlePrice() *big.Int {
+	bundles := b.eth.txPool.AllBundles()
+	gasFloor := big.NewInt(b.eth.config.Miner.MevGasPriceFloor)
+
+	if len(bundles) == 0 {
+		return gasFloor
+	}
+
+	sort.SliceStable(bundles, func(i, j int) bool {
+		return bundles[j].Price.Cmp(bundles[i].Price) < 0
+	})
+
+	idx := len(bundles) / 2
+
+	if bundles[idx] == nil || bundles[idx].Price.Cmp(gasFloor) < 0 {
+		return gasFloor
+	}
+
+	return bundles[idx].Price
+}
+
+func (b *EthAPIBackend) Bundles(_ context.Context, fromBlock, toBlock int64) []*types.BundlesItem {
+	numberToBundles := b.eth.txPool.BundleMetrics(fromBlock, toBlock)
+
+	ret := make([]*types.BundlesItem, 0)
+
+	for i := fromBlock; i <= toBlock; i++ {
+		if bundles, ok := numberToBundles[i]; ok {
+			ret = append(ret, &types.BundlesItem{
+				ReceivedBlock: hexutil.Uint64(i),
+				Bundles:       bundles,
+			})
+		} else {
+			ret = append(ret, &types.BundlesItem{
+				ReceivedBlock: hexutil.Uint64(i),
+				Bundles:       [][]common.Hash{},
+			})
+		}
+	}
+
+	return ret
 }
 
 func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {

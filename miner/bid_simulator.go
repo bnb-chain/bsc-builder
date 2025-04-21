@@ -965,7 +965,7 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 		}
 		// Checking against blob gas limit: It's kind of ugly to perform this check here, but there
 		// isn't really a better place right now. The blob gas limit is checked at block validation time
-		// and not during execution. This means core.ApplyTransaction will not return an error if the
+		// and not during execution. This means core.ApplyTranbisaction will not return an error if the
 		// tx has too many blobs. So we have to explicitly check it here.
 		if (env.blobs + len(sc.Blobs)) > eip4844.MaxBlobsPerBlock(chainConfig, r.env.header.Time) {
 			return errors.New("max data blobs reached")
