@@ -22,8 +22,6 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-const maxBid int64 = 2
-
 type validator struct {
 	*validatorclient.Client
 	BidSimulationLeftOver time.Duration
@@ -96,7 +94,8 @@ func (b *Bidder) mainLoop() {
 	<-timer.C // discard the initial tick
 
 	var (
-		bidNum          int64 = 0
+		bidNum          uint32 = 0
+		maxBid                 = *b.config.MaxBidsPerBuilder
 		betterBidBefore time.Time
 		currentHeight   = b.chain.CurrentBlock().Number.Int64()
 	)
