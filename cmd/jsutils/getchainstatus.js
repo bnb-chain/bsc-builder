@@ -404,10 +404,8 @@ async function getPerformanceData() {
     let gasUsedTotal = 0;
     let inturnBlocks = 0;
     let justifiedBlocks = 0;
-    let turnLength = 4;
-    let lastTimestamp = null; 
+    let turnLength = 1;
     let parliaEnabled = true;
-    
     try {
         turnLength = await provider.send("parlia_getTurnLength", [ethers.toQuantity(program.startNum)]);
     } catch (error) {
@@ -428,7 +426,14 @@ async function getPerformanceData() {
             inturnBlocks += 1;
         }
         let timestamp = eval(eval(header.milliTimestamp).toString(10));
-        let blockInterval = lastTimestamp !== null ? timestamp - lastTimestamp : null;
+        if (parliaEnabled) {
+            let justifiedNumber = await provider.send("parlia_getJustifiedNumber", [ethers.toQuantity(i)]);
+            if (justifiedNumber + 1 == i) {
+                justifiedBlocks += 1;
+            } else {
+                console.log("justified unexpected", "BlockNumber =", i, "justifiedNumber", justifiedNumber);
+            }
+        }
         console.log(
             "BlockNumber =",
             i,
@@ -443,20 +448,8 @@ async function getPerformanceData() {
             "gasUsed",
             gasUsed,
             "timestamp",
-            timestamp,
-            "blockInterval",
-            blockInterval !== null ? blockInterval : "N/A"
+            timestamp
         );
-        lastTimestamp = timestamp;
-
-        if (parliaEnabled) {
-            let justifiedNumber = await provider.send("parlia_getJustifiedNumber", [ethers.toQuantity(i)]);
-            if (justifiedNumber + 1 == i) {
-                justifiedBlocks += 1;
-            } else {
-                console.log("justified unexpected", "BlockNumber =", i, "justifiedNumber", justifiedNumber);
-            }
-        }
     }
     let blockCount = program.endNum - program.startNum;
     let txCountPerBlock = txCountTotal / blockCount;
