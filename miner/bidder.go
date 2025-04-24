@@ -3,7 +3,6 @@ package miner
 import (
 	"context"
 	"errors"
-	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"math/big"
 	"sync"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/bidutil"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -358,7 +358,7 @@ func (b *Bidder) enabled() bool {
 // get block interval for current block by using parent header
 func (b *Bidder) getBlockInterval(parentHeader *types.Header) uint64 {
 	if parentHeader == nil {
-		return 1500 // lorentzBlockInterval
+		return 750 // maxwellBlockInterval
 	}
 	parlia, _ := b.engine.(*parlia.Parlia)
 	// only `Number` and `ParentHash` are used when `BlockInterval`
