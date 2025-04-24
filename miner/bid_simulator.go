@@ -128,10 +128,6 @@ func newBidSimulator(
 	bidWorker bidWorker,
 ) *bidSimulator {
 	// Set default value
-	maxBids := uint32(3)
-	if config.MaxBidsPerBuilder > 0 {
-		maxBids = config.MaxBidsPerBuilder
-	}
 
 	b := &bidSimulator{
 		config:        config,
