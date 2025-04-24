@@ -380,5 +380,7 @@ func (miner *Miner) prepareSimulationEnv(parent *types.Header, state *state.Stat
 		core.ProcessParentBlockHash(header.ParentHash, env.evm)
 	}
 
+	env.size = uint32(env.header.Size())
+
 	return env, nil
 }
