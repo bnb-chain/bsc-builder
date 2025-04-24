@@ -7,13 +7,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/consensus/parlia"
-
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/bidutil"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus"
+	"github.com/ethereum/go-ethereum/consensus/parlia"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
@@ -22,8 +21,6 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 )
-
-const maxBid int64 = 3
 
 type validator struct {
 	*validatorclient.Client
@@ -97,7 +94,8 @@ func (b *Bidder) mainLoop() {
 	<-timer.C // discard the initial tick
 
 	var (
-		bidNum          int64 = 0
+		bidNum          uint32 = 0
+		maxBid                 = *b.config.MaxBidsPerBuilder
 		betterBidBefore time.Time
 		currentHeight   = b.chain.CurrentBlock().Number.Int64()
 	)
@@ -361,7 +359,7 @@ func (b *Bidder) enabled() bool {
 // get block interval for current block by using parent header
 func (b *Bidder) getBlockInterval(parentHeader *types.Header) uint64 {
 	if parentHeader == nil {
-		return 1500 // lorentzBlockInterval
+		return 750 // maxwellBlockInterval
 	}
 	parlia, _ := b.engine.(*parlia.Parlia)
 	// only `Number` and `ParentHash` are used when `BlockInterval`

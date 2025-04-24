@@ -113,13 +113,14 @@ type bidSimulator struct {
 
 	simBidMu      sync.RWMutex
 	simulatingBid map[common.Hash]*BidRuntime // prevBlockHash -> bidRuntime, in the process of simulation
+	bidsToSim     map[uint64][]*BidRuntime    // blockNumber -->  bidRuntime list, used to discard envs
 
 	maxBidsPerBuilder uint32 // Maximum number of bids allowed per builder per block
 }
 
 func newBidSimulator(
 	config *minerconfig.MevConfig,
-	delayLeftOver time.Duration,
+	delayLeftOver *time.Duration,
 	minGasPrice *big.Int,
 	eth Backend,
 	chainConfig *params.ChainConfig,
@@ -133,24 +134,29 @@ func newBidSimulator(
 	}
 
 	b := &bidSimulator{
-		config:            config,
-		delayLeftOver:     delayLeftOver,
-		minGasPrice:       minGasPrice,
-		chain:             eth.BlockChain(),
-		txpool:            eth.TxPool(),
-		chainConfig:       chainConfig,
-		engine:            engine,
-		bidWorker:         bidWorker,
-		maxBidsPerBuilder: maxBids,
-		exitCh:            make(chan struct{}),
-		chainHeadCh:       make(chan core.ChainHeadEvent, chainHeadChanSize),
-		builders:          make(map[common.Address]*builderclient.Client),
-		simBidCh:          make(chan *simBidReq),
-		newBidCh:          make(chan newBidPackage, 100),
-		pending:           make(map[uint64]map[common.Address]map[common.Hash]struct{}),
-		bestBid:           make(map[common.Hash]*BidRuntime),
-		bestBidToRun:      make(map[common.Hash]*types.Bid),
-		simulatingBid:     make(map[common.Hash]*BidRuntime),
+		config:        config,
+		minGasPrice:   minGasPrice,
+		chain:         eth.BlockChain(),
+		txpool:        eth.TxPool(),
+		chainConfig:   chainConfig,
+		engine:        engine,
+		bidWorker:     bidWorker,
+		exitCh:        make(chan struct{}),
+		chainHeadCh:   make(chan core.ChainHeadEvent, chainHeadChanSize),
+		builders:      make(map[common.Address]*builderclient.Client),
+		simBidCh:      make(chan *simBidReq),
+		newBidCh:      make(chan newBidPackage, 100),
+		pending:       make(map[uint64]map[common.Address]map[common.Hash]struct{}),
+		bestBid:       make(map[common.Hash]*BidRuntime),
+		bestBidToRun:  make(map[common.Hash]*types.Bid),
+		simulatingBid: make(map[common.Hash]*BidRuntime),
+		bidsToSim:     make(map[uint64][]*BidRuntime),
+	}
+	if delayLeftOver != nil {
+		b.delayLeftOver = *delayLeftOver
+	}
+	if config.MaxBidsPerBuilder != nil {
+		b.maxBidsPerBuilder = *config.MaxBidsPerBuilder
 	}
 
 	b.chainHeadSub = b.chain.SubscribeChainHeadEvent(b.chainHeadCh)
@@ -267,12 +273,6 @@ func (b *bidSimulator) SetBestBid(prevBlockHash common.Hash, bid *BidRuntime) {
 	b.bestBidMu.Lock()
 	defer b.bestBidMu.Unlock()
 
-	// must discard the environment of the last best bid, otherwise it will cause memory leak
-	last := b.bestBid[prevBlockHash]
-	if last != nil && last.env != nil {
-		last.env.discard()
-	}
-
 	b.bestBid[prevBlockHash] = bid
 }
 
@@ -332,6 +332,21 @@ func (b *bidSimulator) RemoveSimulatingBid(prevBlockHash common.Hash) {
 	delete(b.simulatingBid, prevBlockHash)
 }
 
+func (b *bidSimulator) AddBidToSim(bidRuntime *BidRuntime) {
+	b.simBidMu.Lock()
+	defer b.simBidMu.Unlock()
+
+	if bidRuntime == nil || bidRuntime.bid == nil {
+		return
+	}
+
+	blockNumber := bidRuntime.bid.BlockNumber
+	if _, ok := b.bidsToSim[blockNumber]; !ok {
+		b.bidsToSim[blockNumber] = make([]*BidRuntime, 3)
+	}
+	b.bidsToSim[blockNumber] = append(b.bidsToSim[blockNumber], bidRuntime)
+}
+
 func (b *bidSimulator) mainLoop() {
 	defer b.chainHeadSub.Unsubscribe()
 
@@ -360,7 +375,7 @@ func (b *bidSimulator) canBeInterrupted(targetTime uint64) bool {
 		return true
 	}
 	left := time.Until(time.UnixMilli(int64(targetTime)))
-	return left >= b.config.NoInterruptLeftOver
+	return left >= *b.config.NoInterruptLeftOver
 }
 
 func (b *bidSimulator) newBidLoop() {
@@ -396,7 +411,7 @@ func (b *bidSimulator) newBidLoop() {
 				continue
 			}
 
-			bidRuntime, err := newBidRuntime(newBid.bid, b.config.ValidatorCommission)
+			bidRuntime, err := newBidRuntime(newBid.bid, *b.config.ValidatorCommission)
 			if err != nil {
 				if newBid.feedback != nil {
 					newBid.feedback <- err
@@ -408,7 +423,7 @@ func (b *bidSimulator) newBidLoop() {
 			toCommit := true
 			bestBidToRun := b.GetBestBidToRun(newBid.bid.ParentHash)
 			if bestBidToRun != nil {
-				bestBidRuntime, _ := newBidRuntime(bestBidToRun, b.config.ValidatorCommission)
+				bestBidRuntime, _ := newBidRuntime(bestBidToRun, *b.config.ValidatorCommission)
 				if bidRuntime.isExpectedBetterThan(bestBidRuntime) {
 					// new bid has better expectedBlockReward, use bidRuntime
 					log.Debug("new bid has better expectedBlockReward",
@@ -480,7 +495,7 @@ func (b *bidSimulator) newBidLoop() {
 // get block interval for current block by using parent header
 func (b *bidSimulator) getBlockInterval(parentHeader *types.Header) uint64 {
 	if parentHeader == nil {
-		return 1500 // lorentzBlockInterval
+		return 750 // maxwellBlockInterval
 	}
 	parlia, _ := b.engine.(*parlia.Parlia)
 	// only `Number` and `ParentHash` are used when `BlockInterval`
@@ -494,7 +509,7 @@ func (b *bidSimulator) getBlockInterval(parentHeader *types.Header) uint64 {
 
 func (b *bidSimulator) bidBetterBefore(parentHash common.Hash) time.Time {
 	parentHeader := b.chain.GetHeaderByHash(parentHash)
-	return bidutil.BidBetterBefore(parentHeader, b.getBlockInterval(parentHeader), b.delayLeftOver, b.config.BidSimulationLeftOver)
+	return bidutil.BidBetterBefore(parentHeader, b.getBlockInterval(parentHeader), b.delayLeftOver, *b.config.BidSimulationLeftOver)
 }
 
 func (b *bidSimulator) clearLoop() {
@@ -503,20 +518,20 @@ func (b *bidSimulator) clearLoop() {
 		delete(b.pending, blockNumber)
 		b.pendingMu.Unlock()
 
-		b.bestBidMu.Lock()
-		if bid, ok := b.bestBid[parentHash]; ok {
-			bid.env.discard()
+		clearThreshold := b.chain.GetFinalizedNumber(b.chain.GetHeaderByHash(parentHash))
+		if blockNumber > b.chain.TriesInMemory() {
+			clearThreshold = max(clearThreshold, blockNumber-b.chain.TriesInMemory())
 		}
-		delete(b.bestBid, parentHash)
+
+		b.bestBidMu.Lock()
 		for k, v := range b.bestBid {
-			if v.bid.BlockNumber <= blockNumber-b.chain.TriesInMemory() {
-				v.env.discard()
+			if v.bid.BlockNumber <= clearThreshold {
 				delete(b.bestBid, k)
 			}
 		}
 		delete(b.bestBidToRun, parentHash)
 		for k, v := range b.bestBidToRun {
-			if v.BlockNumber <= blockNumber-b.chain.TriesInMemory() {
+			if v.BlockNumber <= clearThreshold {
 				delete(b.bestBidToRun, k)
 			}
 		}
@@ -524,10 +539,20 @@ func (b *bidSimulator) clearLoop() {
 
 		b.simBidMu.Lock()
 		for k, v := range b.simulatingBid {
-			if v.bid.BlockNumber <= blockNumber-b.chain.TriesInMemory() {
-				v.env.discard()
+			if v.bid.BlockNumber <= clearThreshold {
 				delete(b.simulatingBid, k)
 			}
+		}
+		for blockNumber, bidList := range b.bidsToSim {
+			if blockNumber <= clearThreshold {
+				for _, bid := range bidList {
+					if bid.env != nil {
+						// envs for simulating only discard here
+						bid.env.discard()
+					}
+				}
+			}
+			delete(b.bidsToSim, blockNumber)
 		}
 		b.simBidMu.Unlock()
 	}
@@ -633,10 +658,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 		if bidRuntime.env != nil {
 			logCtx = append(logCtx, "gasLimit", bidRuntime.env.header.GasLimit)
-
-			if err != nil || !success {
-				bidRuntime.env.discard()
-			}
 		}
 
 		if err != nil {
@@ -677,6 +698,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}, false); err != nil {
 		return
 	}
+	b.AddBidToSim(bidRuntime)
 
 	// if the left time is not enough to do simulation, return
 	delay := b.engine.Delay(b.chain, bidRuntime.env.header, &b.delayLeftOver)
@@ -739,7 +761,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 
 	// check if bid reward is valid
 	{
-		bidRuntime.packReward(b.config.ValidatorCommission)
+		bidRuntime.packReward(*b.config.ValidatorCommission)
 		if !bidRuntime.validReward() {
 			err = errors.New("reward does not achieve the expectation")
 			return
@@ -786,7 +808,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 	}
 
 	// if enable greedy merge, fill bid env with transactions from mempool
-	if b.config.GreedyMergeTx {
+	if *b.config.GreedyMergeTx {
 		endingBidsExtra := 20 * time.Millisecond // Add a buffer to ensure ending bids before `delayLeftOver`
 		minTimeLeftForEndingBids := b.delayLeftOver + endingBidsExtra
 		delay := b.engine.Delay(b.chain, bidRuntime.env.header, &minTimeLeftForEndingBids)
@@ -802,7 +824,7 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 				"builder", bidRuntime.bid.Builder, "tx count", bidRuntime.env.tcount-bidTxLen+1, "err", fillErr)
 
 			// recalculate the packed reward
-			bidRuntime.packReward(b.config.ValidatorCommission)
+			bidRuntime.packReward(*b.config.ValidatorCommission)
 		}
 	}
 
@@ -813,14 +835,6 @@ func (b *bidSimulator) simBid(interruptCh chan int32, bidRuntime *BidRuntime) {
 		log.Error("BidSimulator: failed to commit tx", "builder", bidRuntime.bid.Builder,
 			"bidHash", bidRuntime.bid.Hash(), "tx", payBidTx.Hash(), "err", err)
 		err = fmt.Errorf("invalid tx in bid, %v", err)
-		return
-	}
-
-	// check bid size
-	if bidRuntime.env.size+blockReserveSize > params.MaxMessageSize {
-		log.Error("BidSimulator: failed to check bid size", "builder", bidRuntime.bid.Builder,
-			"bidHash", bidRuntime.bid.Hash(), "env.size", bidRuntime.env.size)
-		err = errors.New("invalid bid size")
 		return
 	}
 
@@ -995,7 +1009,6 @@ func (r *BidRuntime) commitTransaction(chain *core.BlockChain, chainConfig *para
 	}
 
 	r.env.tcount++
-	r.env.size += uint32(tx.Size())
 
 	return nil
 }

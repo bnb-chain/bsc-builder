@@ -32,7 +32,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/gopool"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/common/math"
-	cmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
@@ -544,9 +543,9 @@ func (api *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValida
 	}
 	valLen := len(curValidators)
 	if verifiedValidatorNum == -1 {
-		verifiedValidatorNum = int64(cmath.CeilDiv(valLen, 2))
+		verifiedValidatorNum = int64(math.CeilDiv(valLen, 2))
 	} else if verifiedValidatorNum == -2 {
-		verifiedValidatorNum = int64(cmath.CeilDiv(valLen*2, 3))
+		verifiedValidatorNum = int64(math.CeilDiv(valLen*2, 3))
 	} else if verifiedValidatorNum == -3 {
 		verifiedValidatorNum = int64(valLen)
 	} else if verifiedValidatorNum < 1 || verifiedValidatorNum > int64(valLen) {
@@ -565,7 +564,7 @@ func (api *BlockChainAPI) getFinalizedNumber(ctx context.Context, verifiedValida
 	lastHeader := latestHeader
 	confirmedValSet := make(map[common.Address]struct{}, valLen)
 	confirmedValSet[lastHeader.Coinbase] = struct{}{}
-	epochLength := int(500) // TODO(Nathan)(BEP-524 Phase Two): use `maxwellEpochLength` instead
+	epochLength := int(1000) // maxwellEpochLength
 	for count := 1; int64(len(confirmedValSet)) < verifiedValidatorNum && count <= epochLength && lastHeader.Number.Int64() > max(fastFinalizedHeader.Number.Int64(), 1); count++ {
 		lastHeader, err = api.b.HeaderByHash(ctx, lastHeader.ParentHash)
 		if err != nil { // impossible

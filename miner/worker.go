@@ -69,12 +69,6 @@ const (
 	// the current 4 mining loops could have asynchronous risk of mining block with
 	// save height, keep recently mined blocks to avoid double sign for safety,
 	recentMinedCacheLimit = 20
-
-	// Reserve block size for the following 3 components:
-	// a. System transactions at the end of the block
-	// b. Seal in the block header
-	// c. Overhead from RLP encoding
-	blockReserveSize = 100 * 1024
 )
 
 var (
@@ -101,7 +95,6 @@ type environment struct {
 	signer   types.Signer
 	state    *state.StateDB // apply state changes here
 	tcount   int            // tx count in cycle
-	size     uint32         // almost accurate block size,
 	gasPool  *core.GasPool  // available gas used to pack transactions
 	coinbase common.Address
 	evm      *vm.EVM
@@ -125,7 +118,6 @@ func (env *environment) copy() *environment {
 		signer:   env.signer,
 		state:    env.state.Copy(),
 		tcount:   env.tcount,
-		size:     env.size,
 		coinbase: env.coinbase,
 		header:   types.CopyHeader(env.header),
 		receipts: copyReceipts(env.receipts),
@@ -297,7 +289,7 @@ func newWorker(config *minerconfig.Config, engine consensus.Engine, eth Backend,
 		exitCh:             make(chan struct{}),
 		resubmitIntervalCh: make(chan time.Duration),
 		recentMinedBlocks:  recentMinedBlocks,
-		bidder:             NewBidder(&config.Mev, config.DelayLeftOver, engine, eth),
+		bidder:             NewBidder(&config.Mev, *config.DelayLeftOver, engine, eth),
 		bundleCache:        NewBundleCache(),
 	}
 	// Subscribe events for blockchain
@@ -971,13 +963,6 @@ LOOP:
 			txs.Pop()
 			continue
 		}
-		// If we don't have enough size left for the next transaction, skip it.
-		if env.size+uint32(tx.Size())+blockReserveSize > params.MaxMessageSize {
-			log.Trace("Not enough size left for transaction", "hash", ltx.Hash,
-				"env.size", env.size, "needed", uint32(tx.Size()))
-			txs.Pop()
-			continue
-		}
 		// Error may be ignored here. The error has already been checked
 		// during transaction acceptance in the transaction pool.
 		from, _ := types.Sender(env.signer, tx)
@@ -1003,7 +988,6 @@ LOOP:
 			// Everything ok, collect the logs and shift in the next transaction from the same account
 			coalescedLogs = append(coalescedLogs, logs...)
 			env.tcount++
-			env.size += uint32(tx.Size()) // size of BlobTxSidecar included
 			txs.Shift()
 
 		default:
@@ -1129,7 +1113,7 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 		return nil, err
 	}
 
-	// Handle upgrade build-in system contract code
+	// Handle upgrade built-in system contract code
 	systemcontracts.TryUpdateBuildInSystemContract(w.chainConfig, header.Number, parent.Time, header.Time, env.state, true)
 
 	if header.ParentBeaconRoot != nil {
@@ -1139,9 +1123,6 @@ func (w *worker) prepareWork(genParams *generateParams, witness bool) (*environm
 	if w.chainConfig.IsPrague(header.Number, header.Time) {
 		core.ProcessParentBlockHash(header.ParentHash, env.evm)
 	}
-
-	env.size = uint32(env.header.Size())
-
 	return env, nil
 }
 
@@ -1371,7 +1352,7 @@ LOOP:
 		prevWork = work
 		workList = append(workList, work)
 
-		delay := w.engine.Delay(w.chain, work.header, &w.config.DelayLeftOver)
+		delay := w.engine.Delay(w.chain, work.header, w.config.DelayLeftOver)
 		if delay == nil {
 			log.Warn("commitWork delay is nil, something is wrong")
 			stopTimer = nil
@@ -1427,7 +1408,7 @@ LOOP:
 		newTxsNum := 0
 		// stopTimer was the maximum delay for each fillTransactions
 		// but now it is used to wait until (head.Time - DelayLeftOver) is reached.
-		stopTimer.Reset(time.Until(time.UnixMilli(int64(work.header.MilliTimestamp()))) - w.config.DelayLeftOver)
+		stopTimer.Reset(time.Until(time.UnixMilli(int64(work.header.MilliTimestamp()))) - *w.config.DelayLeftOver)
 	LOOP_WAIT:
 		// TODO consider whether to take bundle pool status as LOOP_WAIT condition
 		for {
@@ -1439,7 +1420,7 @@ LOOP:
 				log.Debug("commitWork interruptCh closed, new block imported or resubmit triggered")
 				return
 			case ev := <-txsCh:
-				delay := w.engine.Delay(w.chain, work.header, &w.config.DelayLeftOver)
+				delay := w.engine.Delay(w.chain, work.header, w.config.DelayLeftOver)
 				log.Debug("commitWork txsCh arrived", "fillDuration", fillDuration.String(),
 					"delay", delay.String(), "work.tcount", work.tcount,
 					"newTxsNum", newTxsNum, "len(ev.Txs)", len(ev.Txs))
@@ -1494,7 +1475,7 @@ LOOP:
 		inturnBlocksGauge.Inc(1)
 		// We want to start sealing the block as late as possible here if mev is enabled, so we could give builder the chance to send their final bid.
 		// Time left till sealing the block.
-		tillSealingTime := time.Until(time.UnixMilli(int64(bestWork.header.MilliTimestamp()))) - w.config.DelayLeftOver
+		tillSealingTime := time.Until(time.UnixMilli(int64(bestWork.header.MilliTimestamp()))) - *w.config.DelayLeftOver
 		if tillSealingTime > 0 {
 			// Still some time left, wait for the best bid.
 			// This happens during the peak time of the network, the local block building LOOP would break earlier than
@@ -1524,7 +1505,7 @@ LOOP:
 
 		if bestBid != nil && bestReward.CmpBig(bestBid.packedBlockReward) < 0 {
 			// localValidatorReward is the reward for the validator self by the local block.
-			localValidatorReward := new(uint256.Int).Mul(bestReward, uint256.NewInt(w.config.Mev.ValidatorCommission))
+			localValidatorReward := new(uint256.Int).Mul(bestReward, uint256.NewInt(*w.config.Mev.ValidatorCommission))
 			localValidatorReward.Div(localValidatorReward, uint256.NewInt(10000))
 
 			log.Debug("BidSimulator: final compare", "block", bestWork.header.Number.Uint64(),

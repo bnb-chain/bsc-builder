@@ -55,6 +55,7 @@ const provider = new ethers.JsonRpcProvider(program.rpc);
 const addrValidatorSet = "0x0000000000000000000000000000000000001000";
 const addrSlash = "0x0000000000000000000000000000000000001001";
 const addrStakeHub = "0x0000000000000000000000000000000000002002";
+const addrGovernor = "0x0000000000000000000000000000000000002004";
 
 const validatorSetAbi = [
     "function validatorExtraSet(uint256 offset) external view returns (uint256, bool, bytes)",
@@ -69,7 +70,12 @@ const validatorSetAbi = [
     "function burnRatio() external view returns (uint256)", // default: 10%
     "function systemRewardBaseRatio() external view returns (uint256)", // default: 1/16
 ];
-const slashAbi = ["function getSlashIndicator(address validatorAddr) external view returns (uint256, uint256)"];
+const slashAbi = [
+    "function getSlashIndicator(address validatorAddr) external view returns (uint256, uint256)",
+    "function misdemeanorThreshold() external view returns (uint256)",
+    "function felonyThreshold() external view returns (uint256)",
+    "function felonySlashScope() external view returns (uint256)",
+];
 
 // https://github.com/bnb-chain/bsc-genesis-contract/blob/master/contracts/StakeHub.sol
 const stakeHubAbi = [
@@ -85,9 +91,15 @@ const stakeHubAbi = [
     "function felonyJailTime() public view returns (uint256)", // default 30days,
 ];
 
+const governorAbi = [
+    "function votingPeriod() public view returns (uint256)",
+    "function lateQuorumVoteExtension() public view returns (uint64)", // it represents minPeriodAfterQuorum
+];
+
 const validatorSet = new ethers.Contract(addrValidatorSet, validatorSetAbi, provider);
 const slashIndicator = new ethers.Contract(addrSlash, slashAbi, provider);
 const stakeHub = new ethers.Contract(addrStakeHub, stakeHubAbi, provider);
+const governor = new ethers.Contract(addrGovernor, governorAbi, provider);
 
 const validatorMap = new Map([
     // BSC mainnet
@@ -136,6 +148,10 @@ const validatorMap = new Map([
     ["0xd849d1dF66bFF1c2739B4399425755C2E0fAbbAb", "Nexa"],
     ["0xA015d9e9206859c13201BB3D6B324d6634276534", "Star"],
     ["0x5ADde0151BfAB27f329e5112c1AeDeed7f0D3692", "Veri"],
+    ["0xd6Ab358AD430F65EB4Aa5a1598FF2c34489dcfdE", "Saturn"],
+    ["0x0dC5e1CAe4d364d0C79C9AE6BDdB5DA49b10A7d9", "ListaDAO"],
+    ["0xE554F591cCFAc02A84Cf9a5165DDF6C1447Cc67D", "ListaDAO2"],
+    ["0x059a8BFd798F29cE665816D12D56400Fa47DE028", "ListaDAO3"],
     // Chapel
     ["0x08265dA01E1A65d62b903c7B34c08cB389bF3D99", "Ararat"],
     ["0x7f5f2cF1aec83bF0c74DF566a41aa7ed65EA84Ea", "Kita"],
@@ -160,6 +176,13 @@ const validatorMap = new Map([
     ["0xEe22F03961b407bCBae66499a029Be4cA0AF4ab4", "AB4"],
     ["0x1AE5f5C3Cb452E042b0B7b9DC60596C9CD84BaF6", "Jake"],
     ["0xfA4d592F9B152f7a10B5DE9bE24C27a74BCE431A", "MyTWFMM"],
+    ["0x26Ba9aB44feb5D8eE47aDeaa46a472f71E50fbce", "Lime"],
+    ["0xC8824e38440893b62CaDC4d1BD05e33895B25d74", "Skynet3k"],
+    ["0x9a2da2Ce5Eda5E0b4914720c3A798521956E1009", "Musala"],
+    ["0x9270fF2EaA8ef253B57011A5b7505D948784E2be", "Vihren"],
+    ["0x86eb31b90566a9f4F3AB85138c78A000EBA81685", "GucciOp3k"],
+    ["0x28D70c3756d4939DCBdEB3f0fFF5B4B36E6e327F", "OmegaV"],
+    ["0x6a5470a3B7959ab064d6815e349eD4aE2dE5210d", "Skynet10k"],
 ]);
 
 const builderMap = new Map([
@@ -188,11 +211,38 @@ const builderMap = new Map([
     ["0xE1ec1AeCE7953ecB4539749B9AA2eEF63354860a", "blockroute singapore"],
     ["0x89434FC3a09e583F2cb4e47A8B8fe58De8BE6a15", "blockroute virginia"],
     ["0x10353562E662E333C0c2007400284e0e21cF74fF", "blockroute x"],
-    //     txboost
-    ["0x6Dddf681C908705472D09B1D7036B2241B50e5c7", "puissant ap"],
-    ["0x76736159984AE865a9b9Cc0Df61484A49dA68191", "puissant eu"],
-    ["0x5054b21D8baea3d602dca8761B235ee10bc0231E", "puissant us"],
+    //      jetbldr
+    ["0x36CB523286D57680efBbfb417C63653115bCEBB5", "jetbldr ap"],
+    ["0x3aD6121407f6EDb65C8B2a518515D45863C206A8", "jetbldr eu"],
+    ["0x345324dC15F1CDcF9022E3B7F349e911fb823b4C", "jetbldr us"],
+    //      blockbus
+    ["0x3FC0c936c00908c07723ffbf2d536D6E0f62C3A4", "jetbldr dublin"],
+    ["0x17e9F0D7E45A500f0148B29C6C98EfD19d95F138", "jetbldr tokyo"],
+    ["0x1319Be8b8Ec4AA81f501924BdCF365fBcAa8d753", "jetbldr virginia"],
+    //     txboost(blocksmith)
+    ["0x6Dddf681C908705472D09B1D7036B2241B50e5c7", "txboost ap"],
+    ["0x76736159984AE865a9b9Cc0Df61484A49dA68191", "txboost eu"],
+    ["0x5054b21D8baea3d602dca8761B235ee10bc0231E", "txboost us"],
+    //      darwin
+    ["0xa6d6086222812eFD5292fF284b0F7ff2a2B86Af4", "darwin ap"],
+    ["0x3265A3243ee84e667a73073504cA4CdeD1413D82", "darwin eu"],
+    ["0xdf11CD23992Fd48Cf2d245aC144010673275f285", "darwin us"],
+    //      inblock
+    ["0x9a3234b450518fadA098388B88e00deCAd96ad38", "inblock ap"],
+    ["0xb49f86586a840AB9920D2f340a85586E50FD30a2", "inblock eu"],
+    ["0x0F6D8b72F3687de6f2824903a83B3ba13c0e88A0", "inblock us"],
+    //      nodereal
+    ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap"],
+    ["0xd0d56b330a0dea077208b96910ce452fd77e1b6f", "nodereal eu"],
+    ["0x4f24ce4cd03a6503de97cf139af2c26347930b99", "nodereal us"],
+    //      xzbuilder
+    ["0x812720cb4639550D7BDb1d8F2be463F4a9663762", "xzbuilder"],
+
     // Chapel
+    ["0x627fE6AFA2E84e461CB7AE7C2c46e8adf9a954a2", "txboost"],
+    // ["0x79102dB16781ddDfF63F301C9Be557Fd1Dd48fA0", "nodereal ap"],
+    // ["0x4827b423D03a349b7519Dda537e9A28d31ecBB48", "puissant y"],
+    ["0x0eAbBdE133fbF3c5eB2BEE6F7c8210deEAA0f7db", "blockrazor"],
 ]);
 
 // 1.cmd: "GetMaxTxCountInBlockRange", usage:
@@ -354,8 +404,10 @@ async function getPerformanceData() {
     let gasUsedTotal = 0;
     let inturnBlocks = 0;
     let justifiedBlocks = 0;
-    let turnLength = 1;
+    let turnLength = 4;
+    let lastTimestamp = null; 
     let parliaEnabled = true;
+    
     try {
         turnLength = await provider.send("parlia_getTurnLength", [ethers.toQuantity(program.startNum)]);
     } catch (error) {
@@ -376,14 +428,7 @@ async function getPerformanceData() {
             inturnBlocks += 1;
         }
         let timestamp = eval(eval(header.milliTimestamp).toString(10));
-        if (parliaEnabled) {
-            let justifiedNumber = await provider.send("parlia_getJustifiedNumber", [ethers.toQuantity(i)]);
-            if (justifiedNumber + 1 == i) {
-                justifiedBlocks += 1;
-            } else {
-                console.log("justified unexpected", "BlockNumber =", i, "justifiedNumber", justifiedNumber);
-            }
-        }
+        let blockInterval = lastTimestamp !== null ? timestamp - lastTimestamp : null;
         console.log(
             "BlockNumber =",
             i,
@@ -398,8 +443,20 @@ async function getPerformanceData() {
             "gasUsed",
             gasUsed,
             "timestamp",
-            timestamp
+            timestamp,
+            "blockInterval",
+            blockInterval !== null ? blockInterval : "N/A"
         );
+        lastTimestamp = timestamp;
+
+        if (parliaEnabled) {
+            let justifiedNumber = await provider.send("parlia_getJustifiedNumber", [ethers.toQuantity(i)]);
+            if (justifiedNumber + 1 == i) {
+                justifiedBlocks += 1;
+            } else {
+                console.log("justified unexpected", "BlockNumber =", i, "justifiedNumber", justifiedNumber);
+            }
+        }
     }
     let blockCount = program.endNum - program.startNum;
     let txCountPerBlock = txCountTotal / blockCount;
@@ -526,19 +583,26 @@ async function getKeyParameters() {
         numOfCabinets = 21;
     }
     // let maxNumOfCandidates = await validatorSet.maxNumOfCandidates({blockTag:blockNum})  // deprecated
-    // let turnLength = await validatorSet.turnLength({blockTag:blockNum})
+    let turnLength = await validatorSet.turnLength({blockTag:blockNum})
     let maxNumOfWorkingCandidates = await validatorSet.maxNumOfWorkingCandidates({ blockTag: blockNum });
     let maintainSlashScale = await validatorSet.maintainSlashScale({ blockTag: blockNum });
-    console.log(
-        "numOfCabinets",
-        Number(numOfCabinets),
-        "maxNumOfWorkingCandidates",
-        Number(maxNumOfWorkingCandidates),
-        "maintainSlashScale",
-        maintainSlashScale
-    );
+    console.log("##==== ValidatorContract: 0x0000000000000000000000000000000000001000");
+    console.log("\tturnLength", Number(turnLength));
+    console.log("\tnumOfCabinets", Number(numOfCabinets));
+    console.log("\tmaxNumOfWorkingCandidates", Number(maxNumOfWorkingCandidates));
+    console.log("\tmaintainSlashScale", Number(maintainSlashScale));
 
-    // part 2: staking
+    // part 2: slash
+    let misdemeanorThreshold = await slashIndicator.misdemeanorThreshold({blockTag:blockNum})
+    let felonyThreshold = await slashIndicator.felonyThreshold({blockTag:blockNum})
+    let felonySlashScope = await slashIndicator.felonySlashScope({blockTag:blockNum})
+    console.log("##==== SlashContract: 0x0000000000000000000000000000000000001001");
+    console.log("\tmisdemeanorThreshold", Number(misdemeanorThreshold));
+    console.log("\tfelonyThreshold", Number(felonyThreshold));
+    console.log("\tfelonySlashScope", Number(felonySlashScope));
+
+
+    // part 3: staking
     // let minSelfDelegationBNB = await stakeHub.minSelfDelegationBNB({blockTag:blockNum})/BigInt(10**18)
     let maxElectedValidators = await stakeHub.maxElectedValidators({ blockTag: blockNum });
     let validatorElectionInfo = await stakeHub.getValidatorElectionInfo(0, 0, { blockTag: blockNum });
@@ -546,7 +610,10 @@ async function getKeyParameters() {
     let votingPowers = validatorElectionInfo[1];
     let voteAddrs = validatorElectionInfo[2];
     let totalLength = validatorElectionInfo[3];
-    console.log("maxElectedValidators", Number(maxElectedValidators), "Registered", Number(totalLength));
+
+    console.log("\n##==== StakeHubContract: 0x0000000000000000000000000000000000002002")
+    console.log("\tmaxElectedValidators", Number(maxElectedValidators));
+    console.log("\tRegistered", Number(totalLength));
     let validatorTable = [];
     for (let i = 0; i < totalLength; i++) {
         validatorTable.push({
@@ -558,6 +625,13 @@ async function getKeyParameters() {
     }
     validatorTable.sort((a, b) => b.votingPower - a.votingPower);
     console.table(validatorTable);
+
+    // part 4: governance
+    let votingPeriod = await governor.votingPeriod({ blockTag: blockNum });
+    let minPeriodAfterQuorum = await governor.lateQuorumVoteExtension({ blockTag: blockNum });
+    console.log("\n##==== GovernorContract: 0x0000000000000000000000000000000000002004")
+    console.log("\tvotingPeriod", Number(votingPeriod));
+    console.log("\tminPeriodAfterQuorum", Number(minPeriodAfterQuorum));
 }
 
 // 9.cmd: "getEip7623", usage:
@@ -644,7 +718,13 @@ async function getMevStatus() {
         blockrazor: 0,
         puissant: 0,
         blockroute: 0,
+        jetbldr: 0,
         txboost: 0,
+        blockbus: 0,
+        darwin: 0,
+        inblock: 0,
+        nodereal: 0,
+        xzbuilder: 0,
     };
 
     // Get the latest block number

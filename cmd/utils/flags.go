@@ -301,19 +301,14 @@ var (
 		Usage:    "Manually specify the hard fork timestamps which have passed on the mainnet, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
-	OverridePascal = &cli.Uint64Flag{
-		Name:     "override.pascal",
-		Usage:    "Manually specify the Pascal fork timestamp, overriding the bundled setting",
-		Category: flags.EthCategory,
-	}
-	OverridePrague = &cli.Uint64Flag{
-		Name:     "override.prague",
-		Usage:    "Manually specify the Prague fork timestamp, overriding the bundled setting",
-		Category: flags.EthCategory,
-	}
 	OverrideLorentz = &cli.Uint64Flag{
 		Name:     "override.lorentz",
 		Usage:    "Manually specify the Lorentz fork timestamp, overriding the bundled setting",
+		Category: flags.EthCategory,
+	}
+	OverrideMaxwell = &cli.Uint64Flag{
+		Name:     "override.maxwell",
+		Usage:    "Manually specify the Maxwell fork timestamp, overriding the bundled setting",
 		Category: flags.EthCategory,
 	}
 	OverrideVerkle = &cli.Uint64Flag{
@@ -652,7 +647,7 @@ var (
 	MinerDelayLeftoverFlag = &cli.DurationFlag{
 		Name:     "miner.delayleftover",
 		Usage:    "Time reserved to finalize a block",
-		Value:    ethconfig.Defaults.Miner.DelayLeftOver,
+		Value:    *ethconfig.Defaults.Miner.DelayLeftOver,
 		Category: flags.MinerCategory,
 	}
 
@@ -1870,7 +1865,8 @@ func setMiner(ctx *cli.Context, cfg *minerconfig.Config) {
 		cfg.Recommit = ctx.Duration(MinerRecommitIntervalFlag.Name)
 	}
 	if ctx.IsSet(MinerDelayLeftoverFlag.Name) {
-		cfg.DelayLeftOver = ctx.Duration(MinerDelayLeftoverFlag.Name)
+		minerDelayLeftover := ctx.Duration(MinerDelayLeftoverFlag.Name)
+		cfg.DelayLeftOver = &minerDelayLeftover
 	}
 	if ctx.Bool(VotingEnabledFlag.Name) {
 		cfg.VoteEnable = true

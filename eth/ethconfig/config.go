@@ -187,14 +187,11 @@ type Config struct {
 	// OverridePassedForkTime
 	OverridePassedForkTime *uint64 `toml:",omitempty"`
 
-	// OverridePascal (TODO: remove after the fork)
-	OverridePascal *uint64 `toml:",omitempty"`
-
-	// OverridePrague (TODO: remove after the fork)
-	OverridePrague *uint64 `toml:",omitempty"`
-
 	// OverrideLorentz (TODO: remove after the fork)
 	OverrideLorentz *uint64 `toml:",omitempty"`
+
+	// OverrideMaxwell (TODO: remove after the fork)
+	OverrideMaxwell *uint64 `toml:",omitempty"`
 
 	// OverrideVerkle (TODO: remove after the fork)
 	OverrideVerkle *uint64 `toml:",omitempty"`
@@ -219,4 +216,13 @@ func CreateConsensusEngine(config *params.ChainConfig, db ethdb.Database, ee *et
 		return clique.New(config.Clique, db), nil
 	}
 	return beacon.New(ethash.NewFaker()), nil
+}
+
+func ApplyDefaultEthConfig(cfg *Config) {
+	if cfg == nil {
+		log.Warn("ApplyDefaultEthConfig cfg == nil")
+		return
+	}
+
+	minerconfig.ApplyDefaultMinerConfig(&cfg.Miner)
 }
