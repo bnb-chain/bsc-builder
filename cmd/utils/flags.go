@@ -876,9 +876,9 @@ var (
 		Usage:    "Allow for unprotected (non EIP155 signed) transactions to be submitted via RPC",
 		Category: flags.APICategory,
 	}
-	EnablePrivateTxRPC = &cli.BoolFlag{
-		Name:     "rpc.enable-private-tx",
-		Usage:    "Enable private transaction rpc",
+	PrivateTxMode = &cli.BoolFlag{
+		Name:     "rpc.private-tx-mode",
+		Usage:    "Enable private transaction mode",
 		Category: flags.APICategory,
 	}
 	BatchRequestLimit = &cli.IntFlag{
@@ -1424,8 +1424,8 @@ func setHTTP(ctx *cli.Context, cfg *node.Config) {
 		cfg.AllowUnprotectedTxs = ctx.Bool(AllowUnprotectedTxs.Name)
 	}
 
-	if ctx.IsSet(EnablePrivateTxRPC.Name) {
-		cfg.EnablePrivateTxRPC = ctx.Bool(EnablePrivateTxRPC.Name)
+	if ctx.IsSet(PrivateTxMode.Name) {
+		cfg.PrivateTxMode = ctx.Bool(PrivateTxMode.Name)
 	}
 
 	if ctx.IsSet(BatchRequestLimit.Name) {

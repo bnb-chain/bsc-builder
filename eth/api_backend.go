@@ -51,7 +51,7 @@ import (
 type EthAPIBackend struct {
 	extRPCEnabled       bool
 	allowUnprotectedTxs bool
-	enablePrivateTxRPC  bool
+	privateTxMode       bool
 	eth                 *Ethereum
 	gpo                 *gasprice.Oracle
 }
@@ -476,8 +476,8 @@ func (b *EthAPIBackend) UnprotectedAllowed() bool {
 	return b.allowUnprotectedTxs
 }
 
-func (b *EthAPIBackend) EnablePrivateTxRPC() bool {
-	return b.enablePrivateTxRPC
+func (b *EthAPIBackend) PrivateTxMode() bool {
+	return b.privateTxMode
 }
 
 func (b *EthAPIBackend) RPCGasCap() uint64 {
