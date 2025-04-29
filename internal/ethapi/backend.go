@@ -55,6 +55,7 @@ type Backend interface {
 	RPCEVMTimeout() time.Duration // global timeout for eth_call over rpc: DoS protection
 	RPCTxFeeCap() float64         // global tx fee cap for all transaction related APIs
 	UnprotectedAllowed() bool     // allows only for EIP155 transactions.
+	EnablePrivateTxRPC() bool     // enable private tx rpc
 
 	// Blockchain API
 	SetHead(number uint64)
