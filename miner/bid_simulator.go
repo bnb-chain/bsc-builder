@@ -126,6 +126,8 @@ func newBidSimulator(
 	engine consensus.Engine,
 	bidWorker bidWorker,
 ) *bidSimulator {
+	// Set default value
+
 	b := &bidSimulator{
 		config:        config,
 		minGasPrice:   minGasPrice,

@@ -334,7 +334,7 @@ func (p *TxPool) GetBlobs(vhashes []common.Hash) ([]*kzg4844.Blob, []*kzg4844.Pr
 // Add enqueues a batch of transactions into the pool if they are valid. Due
 // to the large transaction churn, add may postpone fully integrating the tx
 // to a later point to batch multiple ones together.
-func (p *TxPool) Add(txs []*types.Transaction, sync bool) []error {
+func (p *TxPool) Add(txs []*types.Transaction, sync bool, private bool) []error {
 	// Split the input transactions between the subpools. It shouldn't really
 	// happen that we receive merged batches, but better graceful than strange
 	// errors.
@@ -361,7 +361,7 @@ func (p *TxPool) Add(txs []*types.Transaction, sync bool) []error {
 	// back the errors into the original sort order.
 	errsets := make([][]error, len(p.subpools))
 	for i := 0; i < len(p.subpools); i++ {
-		errsets[i] = p.subpools[i].Add(txsets[i], sync)
+		errsets[i] = p.subpools[i].Add(txsets[i], sync, private)
 	}
 	errs := make([]error, len(txs))
 	for i, split := range splits {
@@ -565,4 +565,13 @@ func (p *TxPool) Clear() {
 	for _, subpool := range p.subpools {
 		subpool.Clear()
 	}
+}
+
+func (p *TxPool) IsPrivateTxHash(hash common.Hash) bool {
+	for _, subpool := range p.subpools {
+		if subpool.IsPrivateTxHash(hash) {
+			return true
+		}
+	}
+	return false
 }

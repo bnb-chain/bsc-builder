@@ -389,8 +389,10 @@ func (b *backendMock) SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHead
 func (b *backendMock) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription {
 	return nil
 }
-func (b *backendMock) SendTx(ctx context.Context, signedTx *types.Transaction) error { return nil }
-func (b *backendMock) SendBundle(ctx context.Context, bundle *types.Bundle) error    { return nil }
+func (b *backendMock) SendTx(ctx context.Context, signedTx *types.Transaction, private bool) error {
+	return nil
+}
+func (b *backendMock) SendBundle(ctx context.Context, bundle *types.Bundle) error { return nil }
 func (b *backendMock) SimulateGaslessBundle(bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error) {
 	//TODO implement me
 	panic("implement me")
