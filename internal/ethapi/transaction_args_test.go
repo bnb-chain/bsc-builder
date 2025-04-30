@@ -336,6 +336,7 @@ func (b *backendMock) RPCGasCap() uint64                 { return 0 }
 func (b *backendMock) RPCEVMTimeout() time.Duration      { return time.Second }
 func (b *backendMock) RPCTxFeeCap() float64              { return 0 }
 func (b *backendMock) UnprotectedAllowed() bool          { return false }
+func (b *backendMock) PrivateTxMode() bool               { return false }
 func (b *backendMock) SetHead(number uint64)             {}
 func (b *backendMock) HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*types.Header, error) {
 	return nil, nil
@@ -389,8 +390,10 @@ func (b *backendMock) SubscribeFinalizedHeaderEvent(ch chan<- core.FinalizedHead
 func (b *backendMock) SubscribeNewVoteEvent(ch chan<- core.NewVoteEvent) event.Subscription {
 	return nil
 }
-func (b *backendMock) SendTx(ctx context.Context, signedTx *types.Transaction) error { return nil }
-func (b *backendMock) SendBundle(ctx context.Context, bundle *types.Bundle) error    { return nil }
+func (b *backendMock) SendTx(ctx context.Context, signedTx *types.Transaction, private bool) error {
+	return nil
+}
+func (b *backendMock) SendBundle(ctx context.Context, bundle *types.Bundle) error { return nil }
 func (b *backendMock) SimulateGaslessBundle(bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error) {
 	//TODO implement me
 	panic("implement me")
