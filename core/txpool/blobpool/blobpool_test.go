@@ -1109,7 +1109,7 @@ func TestChangingSlotterSize(t *testing.T) {
 
 		// Try to add the big blob tx. In the initial iteration it should overflow
 		// the pool. On the subsequent iteration it should be accepted.
-		errs := pool.Add([]*types.Transaction{tx3}, true)
+		errs := pool.Add([]*types.Transaction{tx3}, true, false)
 		if _, ok := pool.index[addr3]; ok && maxBlobs == 6 {
 			t.Errorf("expected insert of oversized blob tx to fail: blobs=24, maxBlobs=%d, err=%v", maxBlobs, errs[0])
 		} else if !ok && maxBlobs == 10 {
@@ -1555,7 +1555,7 @@ func TestAdd(t *testing.T) {
 		// Add each transaction one by one, verifying the pool internals in between
 		for j, add := range tt.adds {
 			signed, _ := types.SignNewTx(keys[add.from], types.LatestSigner(params.MainnetChainConfig), add.tx)
-			if err := pool.add(signed); !errors.Is(err, add.err) {
+			if err := pool.add(signed, false); !errors.Is(err, add.err) {
 				t.Errorf("test %d, tx %d: adding transaction error mismatch: have %v, want %v", i, j, err, add.err)
 			}
 			verifyPoolInternals(t, pool)
@@ -1661,7 +1661,7 @@ func benchmarkPoolPending(b *testing.B, datacap uint64) {
 			b.Fatal(err)
 		}
 		statedb.AddBalance(addr, uint256.NewInt(1_000_000_000), tracing.BalanceChangeUnspecified)
-		pool.add(tx)
+		pool.add(tx, false)
 	}
 	statedb.Commit(0, true, false)
 	defer pool.Close()

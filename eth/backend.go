@@ -256,9 +256,12 @@ func New(stack *node.Node, config *ethconfig.Config) (*Ethereum, error) {
 		stopReportCh:      make(chan struct{}, 1),
 	}
 
-	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, eth, nil}
+	eth.APIBackend = &EthAPIBackend{stack.Config().ExtRPCEnabled(), stack.Config().AllowUnprotectedTxs, stack.Config().PrivateTxMode, eth, nil}
 	if eth.APIBackend.allowUnprotectedTxs {
 		log.Info("Unprotected transactions allowed")
+	}
+	if eth.APIBackend.privateTxMode {
+		log.Info("Private transaction mode enabled")
 	}
 	ethAPI := ethapi.NewBlockChainAPI(eth.APIBackend)
 	eth.engine, err = ethconfig.CreateConsensusEngine(chainConfig, chainDb, ethAPI, genesisHash)

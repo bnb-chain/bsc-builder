@@ -22,11 +22,13 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
@@ -664,4 +666,63 @@ func copyAddressPtr(a *common.Address) *common.Address {
 	}
 	cpy := *a
 	return &cpy
+}
+
+type TimestampedTxHashSet struct {
+	lock       sync.RWMutex
+	timestamps map[common.Hash]time.Time
+	ttl        time.Duration
+	metrics    *metrics.Gauge
+}
+
+func NewExpiringTxHashSet(ttl time.Duration, metrics *metrics.Gauge) *TimestampedTxHashSet {
+	s := &TimestampedTxHashSet{
+		timestamps: make(map[common.Hash]time.Time),
+		ttl:        ttl,
+		metrics:    metrics,
+	}
+
+	return s
+}
+
+func (s *TimestampedTxHashSet) Add(hash common.Hash) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	_, ok := s.timestamps[hash]
+	if !ok {
+		s.timestamps[hash] = time.Now().Add(s.ttl)
+		s.metrics.Inc(1)
+	}
+}
+
+func (s *TimestampedTxHashSet) Contains(hash common.Hash) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	_, ok := s.timestamps[hash]
+	return ok
+}
+
+func (s *TimestampedTxHashSet) Remove(hash common.Hash) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	_, ok := s.timestamps[hash]
+	if ok {
+		delete(s.timestamps, hash)
+		s.metrics.Dec(1)
+	}
+}
+
+func (s *TimestampedTxHashSet) Prune() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	now := time.Now()
+	for hash, ts := range s.timestamps {
+		if ts.Before(now) {
+			delete(s.timestamps, hash)
+		}
+	}
+	s.metrics.Update(int64(len(s.timestamps)))
 }

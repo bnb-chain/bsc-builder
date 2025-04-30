@@ -68,9 +68,11 @@ var (
 	pendingTxs []*types.Transaction
 	newTxs     []*types.Transaction
 
-	testConfig = &minerconfig.Config{
-		Recommit: time.Second,
-		GasCeil:  params.GenesisGasLimit,
+	testDelayLeftOver = time.Duration(100)
+	testConfig        = &minerconfig.Config{
+		Recommit:      time.Second,
+		GasCeil:       params.GenesisGasLimit,
+		DelayLeftOver: &testDelayLeftOver,
 	}
 )
 
@@ -165,7 +167,7 @@ func (b *testWorkerBackend) newRandomTx(creation bool) *types.Transaction {
 
 func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, blocks int) (*worker, *testWorkerBackend) {
 	backend := newTestWorkerBackend(t, chainConfig, engine, db, blocks)
-	backend.txPool.Add(pendingTxs, true)
+	backend.txPool.Add(pendingTxs, true, false)
 	w := newWorker(testConfig, engine, backend, new(event.TypeMux), false)
 	w.setEtherbase(testBankAddress)
 	return w, backend
@@ -200,8 +202,51 @@ func TestGenerateAndImportBlock(t *testing.T) {
 	w.start()
 
 	for i := 0; i < 5; i++ {
-		b.txPool.Add([]*types.Transaction{b.newRandomTx(true)}, true)
-		b.txPool.Add([]*types.Transaction{b.newRandomTx(false)}, true)
+		b.txPool.Add([]*types.Transaction{b.newRandomTx(true)}, true, false)
+		b.txPool.Add([]*types.Transaction{b.newRandomTx(false)}, true, false)
+
+		select {
+		case ev := <-sub.Chan():
+			block := ev.Data.(core.NewMinedBlockEvent).Block
+			if _, err := chain.InsertChain([]*types.Block{block}); err != nil {
+				t.Fatalf("failed to insert new mined block %d: %v", block.NumberU64(), err)
+			}
+		case <-time.After(3 * time.Second): // worker needs 1s to include new changes.
+		}
+	}
+}
+
+func TestGeneratePrivateTxAndImportBlock(t *testing.T) {
+	t.Parallel()
+	var (
+		db     = rawdb.NewMemoryDatabase()
+		config = *params.AllCliqueProtocolChanges
+	)
+	config.Clique = &params.CliqueConfig{Period: 1, Epoch: 30000}
+	engine := clique.New(config.Clique, db)
+
+	w, b := newTestWorker(t, &config, engine, db, 0)
+	defer w.close()
+
+	// This test chain imports the mined blocks.
+	chain, _ := core.NewBlockChain(rawdb.NewMemoryDatabase(), nil, b.genesis, nil, engine, vm.Config{}, nil, nil)
+	defer chain.Stop()
+
+	// Ignore empty commit here for less noise.
+	w.skipSealHook = func(task *task) bool {
+		return len(task.receipts) == 0
+	}
+
+	// Wait for mined blocks.
+	sub := w.mux.Subscribe(core.NewMinedBlockEvent{})
+	defer sub.Unsubscribe()
+
+	// Start mining!
+	w.start()
+
+	for i := 0; i < 5; i++ {
+		b.txPool.Add([]*types.Transaction{b.newRandomTx(true)}, true, true)
+		b.txPool.Add([]*types.Transaction{b.newRandomTx(false)}, true, true)
 
 		select {
 		case ev := <-sub.Chan():

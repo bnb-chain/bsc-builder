@@ -133,7 +133,7 @@ type SubPool interface {
 	// Add enqueues a batch of transactions into the pool if they are valid. Due
 	// to the large transaction churn, add may postpone fully integrating the tx
 	// to a later point to batch multiple ones together.
-	Add(txs []*types.Transaction, sync bool) []error
+	Add(txs []*types.Transaction, sync bool, private bool) []error
 
 	// Pending retrieves all currently processable transactions, grouped by origin
 	// account and sorted by nonce.
@@ -141,6 +141,10 @@ type SubPool interface {
 	// The transactions can also be pre-filtered by the dynamic fee components to
 	// reduce allocations and load on downstream subsystems.
 	Pending(filter PendingFilter) map[common.Address][]*LazyTransaction
+
+	// IsPrivateTxHash returns true if the transaction is a private transaction.
+	// This is used to filter out private transactions from the pool.
+	IsPrivateTxHash(hash common.Hash) bool
 
 	// SubscribeTransactions subscribes to new transaction events. The subscriber
 	// can decide whether to receive notifications only for newly seen transactions
