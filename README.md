@@ -1,3 +1,6 @@
+❗❗❗Updates: This repository is no longer maintained.
+If you wish to use it, please merge BSC releases after v1.5.11 and update the code as needed.
+
 ## Overview
 
 The BSC network has introduced the [Builder API Specification](https://github.com/bnb-chain/BEPs/blob/master/BEPs/BEP322.md) to establish a fair and unified MEV market. Previously, BSC clients lacked native support for validators to integrate with multiple MEV providers at once. The network became unstable because of the many different versions of the client software being used. The latest BSC client adopts the [Proposer-Builder Separation](https://ethereum.org/en/roadmap/pbs/) model. Within this unified framework, several aspects of the BSC network have been improved:
