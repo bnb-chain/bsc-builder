@@ -55,6 +55,7 @@ type Backend interface {
 	RPCEVMTimeout() time.Duration // global timeout for eth_call over rpc: DoS protection
 	RPCTxFeeCap() float64         // global tx fee cap for all transaction related APIs
 	UnprotectedAllowed() bool     // allows only for EIP155 transactions.
+	PrivateTxMode() bool          // enable private tx rpc
 
 	// Blockchain API
 	SetHead(number uint64)
@@ -77,7 +78,7 @@ type Backend interface {
 	GetBlobSidecars(ctx context.Context, hash common.Hash) (types.BlobSidecars, error)
 
 	// Transaction pool API
-	SendTx(ctx context.Context, signedTx *types.Transaction) error
+	SendTx(ctx context.Context, signedTx *types.Transaction, private bool) error
 	SendBundle(ctx context.Context, bundle *types.Bundle) error
 	SimulateGaslessBundle(bundle *types.Bundle) (*types.SimulateGaslessBundleResp, error)
 	BundlePrice() *big.Int

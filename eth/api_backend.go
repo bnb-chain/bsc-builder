@@ -51,6 +51,7 @@ import (
 type EthAPIBackend struct {
 	extRPCEnabled       bool
 	allowUnprotectedTxs bool
+	privateTxMode       bool
 	eth                 *Ethereum
 	gpo                 *gasprice.Oracle
 }
@@ -290,11 +291,17 @@ func (b *EthAPIBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscri
 	return b.eth.BlockChain().SubscribeLogsEvent(ch)
 }
 
-func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
+func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction, private bool) error {
 	if locals := b.eth.localTxTracker; locals != nil {
-		locals.Track(signedTx)
+		if !private {
+			locals.Track(signedTx)
+		}
 	}
-	return b.eth.txPool.Add([]*types.Transaction{signedTx}, false)[0]
+	if private {
+		return b.eth.txPool.Add([]*types.Transaction{signedTx}, false, true)[0]
+	}
+
+	return b.eth.txPool.Add([]*types.Transaction{signedTx}, false, false)[0]
 }
 
 func (b *EthAPIBackend) SendBundle(ctx context.Context, bundle *types.Bundle) error {
@@ -467,6 +474,10 @@ func (b *EthAPIBackend) ExtRPCEnabled() bool {
 
 func (b *EthAPIBackend) UnprotectedAllowed() bool {
 	return b.allowUnprotectedTxs
+}
+
+func (b *EthAPIBackend) PrivateTxMode() bool {
+	return b.privateTxMode
 }
 
 func (b *EthAPIBackend) RPCGasCap() uint64 {

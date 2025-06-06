@@ -90,7 +90,7 @@ func (p *testTxPool) Get(hash common.Hash) *types.Transaction {
 
 // Add appends a batch of transactions to the pool, and notifies any
 // listeners if the addition channel is non nil
-func (p *testTxPool) Add(txs []*types.Transaction, sync bool) []error {
+func (p *testTxPool) Add(txs []*types.Transaction, sync bool, private bool) []error {
 	p.lock.Lock()
 	defer p.lock.Unlock()
 
@@ -141,6 +141,11 @@ func (p *testTxPool) Pending(filter txpool.PendingFilter) map[common.Address][]*
 		}
 	}
 	return pending
+}
+
+// IsPrivateTxHash returns true if the transaction is a private transaction.
+func (p *testTxPool) IsPrivateTxHash(hash common.Hash) bool {
+	return false
 }
 
 // SubscribeTransactions should return an event subscription of NewTxsEvent and

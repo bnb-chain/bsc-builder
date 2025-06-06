@@ -189,6 +189,7 @@ func (b *Bidder) register(cfg minerconfig.ValidatorConfig) {
 		BidSimulationLeftOver: params.BidSimulationLeftOver,
 		GasCeil:               params.GasCeil,
 	}
+	log.Info("Bidder: register", "validator", cfg.Address, "params", params)
 }
 
 func (b *Bidder) unregister(validator common.Address) {

@@ -45,24 +45,22 @@ func (w *worker) fillTransactionsAndBundles(interruptCh chan int32, env *environ
 	{
 		bundles := w.eth.TxPool().PendingBundles(env.header.Number.Uint64(), env.header.Time)
 
-		// if no bundles, not necessary to fill transactions
-		if len(bundles) == 0 {
-			return errors.New("no bundles in bundle pool")
-		}
+		// if no bundles, skip bundle commit
+		if len(bundles) > 0 {
+			txs, bundle, err := w.generateOrderedBundles(env, bundles)
+			if err != nil {
+				log.Error("fail to generate ordered bundles", "err", err)
+				return err
+			}
 
-		txs, bundle, err := w.generateOrderedBundles(env, bundles)
-		if err != nil {
-			log.Error("fail to generate ordered bundles", "err", err)
-			return err
-		}
+			if err = w.commitBundles(env, txs, interruptCh, stopTimer); err != nil {
+				log.Error("test: fail to commit bundles", "err", err)
+				return err
+			}
 
-		if err = w.commitBundles(env, txs, interruptCh, stopTimer); err != nil {
-			log.Error("test: fail to commit bundles", "err", err)
-			return err
+			env.profit.Add(env.profit, bundle.EthSentToSystem)
+			log.Info("test: fill bundles", "bundles_count", len(bundles))
 		}
-
-		env.profit.Add(env.profit, bundle.EthSentToSystem)
-		log.Info("test: fill bundles", "bundles_count", len(bundles))
 	}
 
 	// commit normal transactions

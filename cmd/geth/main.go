@@ -227,6 +227,7 @@ var (
 		utils.RPCGlobalEVMTimeoutFlag,
 		utils.RPCGlobalTxFeeCapFlag,
 		utils.AllowUnprotectedTxs,
+		utils.PrivateTxMode,
 		utils.BatchRequestLimit,
 		utils.BatchResponseMaxSize,
 	}

@@ -1467,14 +1467,14 @@ func TestMinGasPriceEnforced(t *testing.T) {
 	tx := pricedTransaction(0, 100000, big.NewInt(2), key)
 	pool.SetGasTip(big.NewInt(tx.GasPrice().Int64() + 1))
 
-	if err := pool.Add([]*types.Transaction{tx}, true)[0]; !errors.Is(err, txpool.ErrUnderpriced) {
+	if err := pool.Add([]*types.Transaction{tx}, true, false)[0]; !errors.Is(err, txpool.ErrUnderpriced) {
 		t.Fatalf("Min tip not enforced")
 	}
 
 	tx = dynamicFeeTx(0, 100000, big.NewInt(3), big.NewInt(2), key)
 	pool.SetGasTip(big.NewInt(tx.GasTipCap().Int64() + 1))
 
-	if err := pool.Add([]*types.Transaction{tx}, true)[0]; !errors.Is(err, txpool.ErrUnderpriced) {
+	if err := pool.Add([]*types.Transaction{tx}, true, false)[0]; !errors.Is(err, txpool.ErrUnderpriced) {
 		t.Fatalf("Min tip not enforced")
 	}
 }
@@ -2311,7 +2311,7 @@ func TestTransactionPendingReannouce(t *testing.T) {
 	for i := uint64(0); i < testTxPoolConfig.AccountQueue; i++ {
 		txs = append(txs, transaction(i, 100000, key))
 	}
-	pool.Add(txs, true)
+	pool.Add(txs, true, false)
 
 	select {
 	case ev := <-events:
